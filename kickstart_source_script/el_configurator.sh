@@ -3,9 +3,9 @@
 # RHEL / AlmaLinux / RockyLinux / CentOS configuration script from NetPerfect
 # Works with EL9 and EL8
 
-SCRIPT_BUILD="2024111701"
+SCRIPT_BUILD="2025010201"
 
-LOG_FILE=/root/.npf-postinstall.log
+LOG_FILE=/root/.el-configurator.log
 POST_INSTALL_SCRIPT_GOOD=true
 
 function log {

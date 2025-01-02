@@ -9,6 +9,17 @@
 This script collection is designed to work on Redhat / AlmaLinux / RockyLinux / CentOS and other EL8 / EL9 clones.  
 
 
+### Enterprise Linux configurator script
+
+The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 High, and configure various enhancements. The script is already included in the kickstart file.
+
+To configure an existing setup, you can use the following
+
+```sh
+curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/kickstart_source_script/el_configurator.sh | sh -
+```
+
+
 ### Kickstart file
 
 The kickstart file contains a python script which handles automagic partitioning and other small adjustemnts as pre script, and a machine setup script as post script, that will install additions and configure the system.  

@@ -679,7 +679,7 @@ else
 fi
 
 # Prometheus el_configurator version support
-cat << 'EOF' > /etc/crond.d/el_configurator
+cat << 'EOF' > /etc/cron.d/el_configurator
 # Run el_configurator every 5 minutes
 */5 * * * * root /usr/bin/bash -c 'el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null) \
  && echo -e "# HELP el_configurator_setup_date timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom; \

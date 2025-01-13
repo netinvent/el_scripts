@@ -19,6 +19,9 @@ To configure an existing setup, you can use the following
 curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/kickstart_source_script/el_configurator.sh | sh -
 ```
 
+Adding Prometheus node_exporter, the script will also add two new metrics:
+- `el_configurator_setup_date` which will contain the timestamp of the last el_configurator run
+- `el_configurator_state` which will contain state (0=Success, 1=Failure/Missing) of last run
 
 ### Kickstart file
 

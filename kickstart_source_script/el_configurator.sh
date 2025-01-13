@@ -3,7 +3,7 @@
 # RHEL / AlmaLinux / RockyLinux / CentOS configuration script from NetPerfect
 # Works with EL9 and EL8
 
-SCRIPT_BUILD="2025010201"
+SCRIPT_BUILD="2025011301"
 
 LOG_FILE=/root/.el-configurator.log
 POST_INSTALL_SCRIPT_GOOD=true
@@ -676,6 +676,12 @@ if [ $? -eq 0 ]; then
 else
     log "No node_exporter installed" "ERROR"
 fi
+
+# Prometheus el_configurator version support
+cat << 'EOF' > /etc/crond.d/el_configurator
+# Run el_configurator every 5 minutes
+*/5 * * * * root /usr/bin/bash -c 'el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null) && echo -e "# HELP el_configurator_setupete timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom'
+EOF
 
 # Setting up watchdog in systemd
 log "Setting up systemd watchdog"

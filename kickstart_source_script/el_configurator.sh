@@ -5,6 +5,8 @@
 
 SCRIPT_BUILD="2025011301"
 
+BRAND_NAME=NetPerfect
+BRAND_VER=4.6
 LOG_FILE=/root/.el-configurator.log
 POST_INSTALL_SCRIPT_GOOD=true
 
@@ -28,7 +30,7 @@ function log_quit {
     exit 1
 }
 
-log "Starting NPF post install build ${SCRIPT_BUILD} at $(date)"
+log "Starting EL configurator post install build ${SCRIPT_BUILD} at $(date)"
 
 # This is a duplicate from the Python script, but since we don't inherit pre settings, we need to redeclare it
 # Physical machine can return
@@ -52,7 +54,7 @@ function is_virtual {
             IS_VIRTUAL=false
         else
             # Special diag for kvm machines
-            dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|NetPerfect\|netperfect_vm" > /dev/null 2>&1
+            dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|${BRAND_NAME}" > /dev/null 2>&1
             if [ $? -eq 0 ]; then
                 IS_VIRTUAL=true
                 log "Detected this machine as virtual using hypervisor search"
@@ -131,14 +133,13 @@ function check_internet {
 get_el_version
 is_virtual
 
-# NPF-MOD
 if [ ${IS_VIRTUAL} == true ]; then
-    NPF_NAME=VMv4.5
+    EL_NAME=VMv${BRAND_VER}
 else
-    NPF_NAME=PMv4.5
+    EL_NAME=PMv${BRAND_VER}
 fi
 cat << EOF > /etc/issue
-NetPerfect $NPF_NAME
+${BRAND_NAME} ${EL_NAME}
 
 IPv4 \4
 IPv6 \6
@@ -178,7 +179,7 @@ fi
 # Fix firewall cannot load after anssi_bp28_high
 setsebool -P secure_mode_insmod=off
 
-# NPF don't fetch dnf epel packages since it's not sure we get internet
+# Don't fetch dnf epel packages since it's not sure we get internet
 # Setup EPEL and packages
 check_internet
 if [ $? -eq 0 ]; then
@@ -423,12 +424,12 @@ EOF
     fi
     log "Setting up tuned profiles"
 
-    [ ! -d /etc/tuned/npf-eco ] && mkdir /etc/tuned/npf-eco
-    [ ! -d /etc/tuned/npf-perf ]&& mkdir /etc/tuned/npf-perf
+    [ ! -d /etc/tuned/el-eco ] && mkdir /etc/tuned/el-eco
+    [ ! -d /etc/tuned/el-perf ]&& mkdir /etc/tuned/el-perf
 
-    cat << 'EOF' > /etc/tuned/npf-eco/tuned.conf
+    cat << 'EOF' > /etc/tuned/el-eco/tuned.conf
 [main]
-summary=NetPerfect Powersaver
+summary=EL NetPerfect Powersaver
 include=powersave
 
 # SETTINGS_VER 2023110301
@@ -466,11 +467,11 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/npf-eco/tuned.conf" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/tuned.conf" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/npf-perf/tuned.conf
+    cat << 'EOF' > /etc/tuned/el-perf/tuned.conf
 [main]
-summary=NetPerfect Performance
+summary=EL NetPerfect Performance
 include=network-latency
 
 # SETTINGS_VER 2023110301
@@ -508,9 +509,9 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/npf-perf/tuned.conf" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/tuned.conf" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/npf-eco/script.sh
+    cat << 'EOF' > /etc/tuned/el-eco/script.sh
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -543,9 +544,9 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/npf-eco/script.sh" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/script.sh" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/npf-perf/script.sh
+    cat << 'EOF' > /etc/tuned/el-perf/script.sh
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -574,9 +575,9 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/npf-perf/script.sh" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/script.sh" "ERROR"
 
-    chmod +x /etc/tuned/{npf-eco,npf-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
+    chmod +x /etc/tuned/{el-eco,el-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
 else
     log "This is a virtual machine. We will not setup hardware tooling"
 fi
@@ -653,7 +654,7 @@ systemctl enable tuned 2>> "${LOG_FILE}" || log "Failed to start tuned" "ERROR"
 # Hence, we will not log these errors. On reboot, the "good" profile will be selected anyway
 if [ ${IS_VIRTUAL} != true ]; then
     log "Setting up hardware tuned profile"
-    tuned-adm profile npf-eco
+    tuned-adm profile el-eco
 else
     log "Setting up virtual tuned profile"
     tuned-adm profile virtual-guest
@@ -680,7 +681,9 @@ fi
 # Prometheus el_configurator version support
 cat << 'EOF' > /etc/crond.d/el_configurator
 # Run el_configurator every 5 minutes
-*/5 * * * * root /usr/bin/bash -c 'el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null) && echo -e "# HELP el_configurator_setupete timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom'
+*/5 * * * * root /usr/bin/bash -c 'el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null) \
+ && echo -e "# HELP el_configurator_setup_date timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom; \
+if grep "EL POST SCRIPT: SUCCESS" /etc/motd >/dev/null 2>&1; then el_configurator_state=0; else el_configurator_state=1; fi; echo -e "# HELP el_configurator_state current state of el_configurator run\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom'
 EOF
 
 # Setting up watchdog in systemd
@@ -693,9 +696,9 @@ echo net.ipv4.tcp_congestion_control=bbr >> /etc/sysctl.d/99-sched.conf || log "
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
-    MOTD_MSG="NPF POST SCRIPT: FAILURE"
+    MOTD_MSG="EL POST SCRIPT: FAILURE"
 else
-    MOTD_MSG="NPF POST SCRIPT: SUCCESS"
+    MOTD_MSG="EL POST SCRIPT: SUCCESS"
 fi
 cat << EOF > /etc/motd
 ############################################################
@@ -707,7 +710,7 @@ cat << EOF > /etc/motd
 #                 gestion des changements.                 #
 #                                                          #
 #       Toute connexion à ce système est journalisée       #
-#                 ${MOTD_MSG}                 #
+#                  ${MOTD_MSG}                 #
 ############################################################
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/motd" "ERROR"

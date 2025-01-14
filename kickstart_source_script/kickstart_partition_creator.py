@@ -6,7 +6,7 @@ __intname__ = "kickstart.partition_script.RHEL9"
 __author__ = "Orsiris de Jong"
 __copyright__ = "Copyright (C) 2022-2024 Orsiris de Jong - NetInvent SASU"
 __licence__ = "BSD 3-Clause"
-__build__ = "2024111701"
+__build__ = "2025011401"
 
 ### This is a pre-script for kickstart files in RHEL 9
 ### Allows specific partition schemes with one or more data partitions
@@ -57,7 +57,7 @@ HOSTNAME = "machine.npf.local"
 NETWORK = "dhcp"
 
 # Please note that the following arguments can be superseeded by kernel arguments
-# TARGET, USER_NAME, USER_PASSWORD, ROOT_PASSWORD, HOSTNAME, DISK_PATH (the disk we're installing the OS to, eg something like /dev/sda or /dev/vda or /dev/nvme0)
+# TARGET, USER_NAME, USER_PASSWORD, ROOT_PASSWORD, HOSTNAME, NETWORK, DISK_PATH (the disk we're installing the OS to, eg something like /dev/sda or /dev/vda or /dev/nvme0)
 # You need to specify that kernel argument as NPF_{ARGUMENT_NAME}=value, example
 # append initrd=initrd.img inst.ks=hd:LABEL=MYDISK:/ks.rhel9.cfg NPF_USER_NAME=bob
 
@@ -665,6 +665,9 @@ def setup_package_lists() -> bool:
 
 
 def setup_network(network: str) -> bool:
+    """
+    Setup network using ip and mask, optional gateway and nameserver
+    """
     logger.info("Setting up network")
     try:
         ip, mask, gw, ns = network.split(':')
@@ -673,7 +676,10 @@ def setup_network(network: str) -> bool:
             ip, mask, gw = network.split(':')
             ns = gw
         except Exception:
-            ip = mask = gw = ns = None
+            try:
+                ip, mask = network.split(':')
+            except Exception:
+                ip = mask = gw = ns = None
     
     if ip and mask and gw and ns:
         logger.info(f"Configuring network with {ip}/{mask} gw {gw} ns {ns}")
@@ -684,8 +690,14 @@ def setup_network(network: str) -> bool:
     
     try:
         with open("/tmp/network", "w", encoding="utf-8") as fp:
-            if ip and mask and gw and ns:
-                fp.write(f"network --bootproto static --ip {ip} --netmask {mask} --gateway {gw} --nameserver {ns} --activate --onboot=yes\n")
+            if ip and mask:
+                network_string = f"network --bootproto static --ip {ip} --netmask {mask}"
+                if gw:
+                    network_string += f" --gateway {gw}"
+                if ns:
+                    network_string += f" --nameserver {ns}"
+                network_string += " --activate --onboot=yes\n"
+                fp.write(network_string)
             elif network == "dhcp":
                 fp.write(f"network  --bootproto=dhcp --activate --onboot=yes\n")
             else:

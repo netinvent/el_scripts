@@ -3,7 +3,7 @@
 # RHEL / AlmaLinux / RockyLinux / CentOS configuration script from NetPerfect
 # Works with EL9 and EL8
 
-SCRIPT_BUILD="2025011301"
+SCRIPT_BUILD="2025011401"
 
 BRAND_NAME=NetPerfect
 BRAND_VER=4.6
@@ -681,10 +681,26 @@ fi
 # Prometheus el_configurator version support
 cat << 'EOF' > /etc/cron.d/el_configurator
 # Run el_configurator prometheus metrics every 5 minutes
-*/5 * * * * root /usr/bin/bash -c 'el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null) \
- && echo -e "# HELP el_configurator_setup_date timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom; \
-if grep "EL POST SCRIPT: SUCCESS" /etc/motd >/dev/null 2>&1; then el_configurator_state=0; else el_configurator_state=1; fi; echo -e "# HELP el_configurator_state current state of el_configurator run\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom'
+*/5 * * * * root /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>1&
 EOF
+[ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
+
+# EL configurator metrics
+cat << 'EOF' > /usr/local/bin/el_configurator_metrics.sh
+#!/usr/bin/env bash
+
+el_configurator_date=0
+el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null)
+echo -e "# HELP el_configurator_setup_date timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom; \
+if grep "EL POST SCRIPT: SUCCESS" /etc/motd >/dev/null 2>&1; then 
+    el_configurator_state=0
+else
+    el_configurator_state=1
+fi
+echo -e "# HELP el_configurator_state current state of el_configurator run\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom'
+EOF
+[ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"
 
 # Setting up watchdog in systemd
 log "Setting up systemd watchdog"

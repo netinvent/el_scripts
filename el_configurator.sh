@@ -171,7 +171,7 @@ IPv6 \6
 
 EOF
 
-check internet
+check_internet
 if [ $? -eq 0 ]; then
     log "Updating system"
     if [ "${FLAVOR}" = "rhel" ]; then

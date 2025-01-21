@@ -172,7 +172,7 @@ IPv6 \6
 EOF
 
 check internet
-if [ if $? -eq 0 ]; then
+if [ $? -eq 0 ]; then
     log "Updating system"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"

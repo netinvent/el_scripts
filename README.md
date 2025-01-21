@@ -16,7 +16,7 @@ The script allows to configure an existing Enterprise Linux in order to be compl
 To configure an existing setup, you can use the following
 
 ```sh
-curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/kickstart_source_script/el_configurator.sh | sh -
+curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | sh -
 ```
 
 Adding Prometheus node_exporter, the script will also add two new metrics:

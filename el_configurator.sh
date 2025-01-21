@@ -21,7 +21,7 @@ log() {
     __log_level="${2:-INFO}"
 
     if [ "${__level}" != "" ]; then
-        __log_line="${__level}: ${__log_line}"
+        __log_line="${__log_level}: ${__log_line}"
     fi
     echo "${__log_line}" >> "${LOG_FILE}"
     echo "${__log_line}"
@@ -720,7 +720,7 @@ sed -i 's/.*Storage=.*/Storage=persistent/g' /etc/systemd/journald.conf 2>> "${L
 
 # Since kilall is not present on debian, we'll use plain old kill
 # killall -USR1 systemd-journald
-kill -USR1 $(ps aux | grep [s]ystemd-journald | awk '{print $2}')
+kill -USR1 "$(ps aux | grep '[s]ystemd-journald' | awk '{print $2}')"
 
 # Configure max journal size
 journalctl --vacuum-size=2G 2>> "${LOG_FILE}" || log "Failed to set journald vaccumsize" "ERROR"

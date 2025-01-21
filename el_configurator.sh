@@ -20,9 +20,7 @@ log() {
     __log_line="${1}"
     __log_level="${2:-INFO}"
 
-    if [ "${__level}" != "" ]; then
-        __log_line="${__log_level}: ${__log_line}"
-    fi
+    __log_line="${__log_level}: ${__log_line}"
     echo "${__log_line}" >> "${LOG_FILE}"
     echo "${__log_line}"
 

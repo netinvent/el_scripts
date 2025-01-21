@@ -719,6 +719,7 @@ sed -i 's/.*Storage=.*/Storage=persistent/g' /etc/systemd/journald.conf 2>> "${L
 # Since kilall is not present on debian, we'll use plain old kill
 # killall -USR1 systemd-journald
 # We don't use pgrep since it's not installed everywhere
+# shellcheck disable=SC2009
 kill -USR1 "$(ps aux | grep '[s]ystemd-journald' | awk '{print $2}')"
 
 # Configure max journal size

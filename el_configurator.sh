@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-# RHEL / AlmaLinux / RockyLinux / CentOS configuration script from NetPerfect
-# Works with EL9 and EL8
+# Security & basic setup configuration script from NetPerfect
+# Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
+# Works with Debian 12
 
 SCRIPT_BUILD="2025012101"
 
@@ -10,34 +11,40 @@ BRAND_VER=4.6
 LOG_FILE=/root/.el-configurator.log
 POST_INSTALL_SCRIPT_GOOD=true
 
-function log {
-    local log_line="${1}"
-    local level="${2}"
+# Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"
+# where flavor in rhel,debian and release = major os verison
+SCAP_PROFILE=anssi_bp28_high
+#SCAP_PROFILE=anssi_bp28_intermediary
 
-    if [ "${level}" != "" ]; then
-        log_line="${level}: ${log_line}"
+log() {
+    __log_line="${1}"
+    __log_level="${2:-INFO}"
+
+    if [ "${__level}" != "" ]; then
+        __log_line="${__level}: ${__log_line}"
     fi
-    echo "${log_line}" >> "${LOG_FILE}"
-    echo "${log_line}"
+    echo "${__log_line}" >> "${LOG_FILE}"
+    echo "${__log_line}"
 
-    if [ "${level}" == "ERROR" ]; then
+    if [ "${__log_level}" = "ERROR" ]; then
         POST_INSTALL_SCRIPT_GOOD=false
     fi
 }
 
-function log_quit {
+log_quit() {
     log "${1}" "${2}"
     exit 1
 }
 
 log "Starting EL configurator post install build ${SCRIPT_BUILD} at $(date)"
+[ -z "${BASH_VERSION}" ] && log_quit "This script must be run with bash"
 
 # This is a duplicate from the Python script, but since we don't inherit pre settings, we need to redeclare it
 # Physical machine can return
 # VME (Virtual mode extension)
 # Enhanced Virtualization
 
-function is_virtual {
+is_virtual() {
     lsmod | grep virtio > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         IS_VIRTUAL=true
@@ -47,7 +54,11 @@ function is_virtual {
         # Hence we need to detect specific products
         if ! type -p dmidecode > /dev/null 2>&1; then
             log "dmidecode not found, trying to install it"
-            dnf install -y dmidecode
+            if [ "${FLAVOR}" = "rhel" ]; then
+                dnf install -y dmidecode
+            else
+                apt install -y dmidecode
+            fi
         fi
         if ! type -p dmidecode > /dev/null 2>&1; then
             log "Cannot find dmidecode, let's assume this is a physical machine" "ERROR"
@@ -66,9 +77,11 @@ function is_virtual {
     fi
 }
 
-function get_el_version {
+get_el_version() {
     if [ -f /etc/os-release ]; then
+        DIST=$(awk '{ if ($1~/^NAME=/) { sub("NAME=","", $1); gsub("\"", "", $1); print tolower($1) }}' /etc/os-release)
         if grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
+            FLAVOR=rhel
             if grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
@@ -76,11 +89,22 @@ function get_el_version {
             else
                 log_quit "RHEL Like release not compatible"
             fi
-            DIST=$(awk '{ if ($1~/^NAME=/) { sub("NAME=","", $1); gsub("\"", "", $1); print tolower($1) }}' /etc/os-release)
-            if [ ${RELEASE} -eq 8 ] || [ ${RELEASE} -eq 9 ]; then
+            if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE}"
+            fi
+        elif grep 'ID=*debian*' /etc/os-release > /dev/null; then
+            FLAVOR=debian
+            if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
+                RELEASE=11
+            elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
+                RELEASE=12
+            fi
+            if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ]; then
+                log "Found Linux ${DIST} release ${RELEASE}"
+            else
+                log_quit "Not compatible with ${DIST} release ${RELEASE} "
             fi
 
         fi
@@ -92,7 +116,7 @@ function get_el_version {
 
 # We need a dns hostname in order to validate that we got internet before using internet related functions
 # Also, we need to make sure 
-function check_internet {
+check_internet() {
     fqdn_host="one.one.one.one kernel.org github.com"
     ip_hosts="2606:4700:4700::1001 8.8.8.8 9.9.9.9"
     for host in ${fqdn_host[@]}; do
@@ -133,7 +157,7 @@ function check_internet {
 get_el_version
 is_virtual
 
-if [ ${IS_VIRTUAL} == true ]; then
+if [ ${IS_VIRTUAL} = true ]; then
     EL_NAME=VMv${BRAND_VER}
 else
     EL_NAME=PMv${BRAND_VER}
@@ -152,40 +176,67 @@ EOF
 check_internet
 if [ $? -eq 0 ]; then
     # Let's reinstall openscap in case we're running this script on a non prepared machine
-    dnf install -y openscap scap-security-guide || log "OpenSCAP is missing and cannot be installed" "ERROR"
+    if [ "$FLAVOR" = "rhel" ]; then
+        dnf install -y openscap scap-security-guide 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        # Temporary setup testing for debian 12 anssi profiles which need ssg-debian 0.17.4 at least
+        # which are not available in stable as of 2025/01/21
+        if [ "$RELEASE" = 12 ]; then
+            log "Setting up testing repo for debian 12"
+            echo "deb http://deb.debian.org/debian testing main contrib non-free non-free-firmware" >> /etc/apt/sources.list.d/testing.list || log "Cannot activate testing repo"
+            echo 'APT::Default-Release "bookworm";' > /etc/apt/apt.conf.d/default-release
+            apt update
+        fi
+        apt install -t testing -y ssg-debian 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles cannot be installed" "ERROR"
+        if [ -f /etc/apt/sources.list.d/testing.list ]; then
+            rm -f /etc/apt/sources.list.d/testing.list
+            apt update
+            rm -f /etc/apt/apt.conf.d/default-release
+        fi
+        apt install -y openscap-utils ssg-base 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+    else
+        loq_quit "Cannot setup OpenSCAP on this system"
+    fi
     log "Setting up scap profile with remote resources"
-    oscap xccdf eval --profile anssi_bp28_high --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+    oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
     # result 2 is partially applied, which can be normal
     if [ $? -eq 1 ]; then
         log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
     else
         log "Generating scap results with remote resources"
-        oscap xccdf generate guide --fetch-remote-resources --profile anssi_bp28_high "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/oscap_anssi_bp028_high_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+        oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
         [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
     fi
 else
     log "Setting up scap profile without internet"
-    oscap xccdf eval --profile anssi_bp28_high --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+    oscap xccdf eval --profile ${SCAP_PROFILE} --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
     if [ $? -eq 1 ]; then
         log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
     else
         log "Generating scap results without internet"
-        oscap xccdf generate guide --profile anssi_bp28_high "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/oscap_anssi_bp028_high_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+        oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
         [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
     fi
 fi
 
 
 # Fix firewall cannot load after anssi_bp28_high
-setsebool -P secure_mode_insmod=off
+if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
+    log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
+    setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
+fi
 
 # Don't fetch dnf epel packages since it's not sure we get internet
 # Setup EPEL and packages
 check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
-    dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
-    dnf install -4 -y htop atop nmon iftop iptraf tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+    if  [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
+        dnf install -4 -y htop atop nmon iftop iptraf tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y htop atop nmon iftop iptraf-ng tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+    fi
 else
     log "No epel available without internet. Didn't install additional packages."
 fi
@@ -193,8 +244,14 @@ fi
 if [ ${IS_VIRTUAL} != true ]; then
     log "Setting up disk SMART tooling"
     # Make sure we install smartmontools even if already present
-    dnf install -y smartmontools || log "Failed to install smartmontools" "ERROR"
-    echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> /etc/smartmontools/smartd.conf 
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -y smartmontools || log "Failed to install smartmontools" "ERROR"
+        SMARTD_CONF_FILE=/etc/smartmontools/smartd.conf
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y smartmontools || log "Failed to install smartmontools" "ERROR"
+        SMARTD_CONF_FILE=/etc/smartd.conf
+    fi
+    echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
     systemctl enable smartd 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
     log "Setting up smart script for prometheus"
@@ -409,19 +466,26 @@ EOF
     chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
     log "Setting up smart script for prometheus task"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    echo "*/5 * * * * root /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" >> /etc/crontab
+    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" >> /etc/crontab
 
+    # TODO Test this for Debian
     log "Setting up iTCO_wdt watchdog"
     echo "iTCO_wdt" > /etc/modules-load.d/10-watchdog.conf
 
     log "Setting up lm_sensors"
-    dnf install -y lm_sensors || log "Failed to install lm_sensors" "ERROR"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -y lm_sensors || log "Failed to install lm_sensors" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y lm-sensors || log "Failed to install lm_sensors" "ERROR"
+    fi
+
     sensors-detect --auto | grep "no driver for ITE IT8613E" > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         log "Setting up partial ITE 8613E support for NP0F6V2 hardware"
         echo "it87" > /etc/modules-load.d/20-it87.conf
         echo "options it87 force_id=0x8620" > /etc/modprobe.d/it87.conf
     fi
+
     log "Setting up tuned profiles"
 
     [ ! -d /etc/tuned/el-eco ] && mkdir /etc/tuned/el-eco
@@ -585,14 +649,30 @@ fi
 # Configure serial console
 log "Setting up serial console"
 systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
-sed -i 's/^GRUB_TERMINAL_OUTPUT="console"/GRUB_TERMINAL="serial console"\nGRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
+sed -i 's/^GRUB_TERMINAL="console"/GRUB_TERMINAL="serial console"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
+sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
 # Update grub to add console
-grubby --update-kernel=ALL --args="console=ttyS0,115200,n8 console=tty0" || log "Enabling serial getty failed" "ERROR"
-grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
+if [ "${FLAVOR}" = "rhel" ]; then
+    grubby --update-kernel=ALL --args="console=ttyS0,115200,n8 console=tty0" || log "Enabling serial getty failed" "ERROR"
+    grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
+elif [ "${FLAVOR}" = "debian" ]; then
+    # Replace existing console arguments
+    if grep "GRUB_CMDLINE_LINUX=.*console.*" > /dev/null 2>&1; then
+        sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0 \3"#g' /etc/default/grub
+    # Add non existing console arguments
+    else
+        sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0"#g' /etc/default/grub
+    fi
+    grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
+else
+    log_quit "Cannot setup serial console on this system"
+fi
+
 
 
 # Setup automagic terminal resize
 # singequotes on EOF prevents variable expansion
+# Tested on EL8, EL9 and Debian 12
 cat << 'EOF' > /etc/profile.d/term_resize.sh
 # Based on solution https://unix.stackexchange.com/a/283206/135459 that replaces xterm-resize package
 
@@ -628,7 +708,7 @@ resize_term2() {
 }
 
 # Run only if we're in a serial terminal
-[ "$(tty)" == /dev/ttyS0 ] && resize_term2
+[ "$(tty)" = /dev/ttyS0 ] && resize_term2
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/profile.d/term_resize.sh" "ERROR"
 
@@ -637,17 +717,29 @@ log "Setting up persistent boot journal"
 [ ! -d /var/log/journal ] && mkdir /var/log/journal
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
 sed -i 's/.*Storage=.*/Storage=persistent/g' /etc/systemd/journald.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/journald.conf" "ERROR"
-killall -USR1 systemd-journald
+
+# Since kilall is not present on debian, we'll use plain old kill
+# killall -USR1 systemd-journald
+kill -USR1 $(ps aux | grep [s]ystemd-journald | awk '{print $2}')
+
 # Configure max journal size
 journalctl --vacuum-size=2G 2>> "${LOG_FILE}" || log "Failed to set journald vaccumsize" "ERROR"
 
-log "Setup DNF automatic except for updates that require reboot"
-systemctl disable dnf-makecache.timer 2>> "${LOG_FILE}" || log "Failed to disable dnf cache timer" "ERROR"
-sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
+if [ "${FLAVOR}" = "rhel" ]; then
+    log "Setup DNF automatic except for updates that require reboot"
+    systemctl disable dnf-makecache.timer 2>> "${LOG_FILE}" || log "Failed to disable dnf cache timer" "ERROR"
+    sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+    sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+    sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+    sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+    systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
+elif [ "${FLAVOR}" = "debian" ]; then
+    log "Setup unattended automatic upgrades"
+    apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
+    systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to start unattended-upgrades" "ERROR"
+else
+    log_quit "Cannot setup automatic updates on this system"
+fi
 
 systemctl enable tuned 2>> "${LOG_FILE}" || log "Failed to start tuned" "ERROR"
 # tuned-adm will complain that tuned is not running, but we cannot start tuned in install environment
@@ -660,11 +752,29 @@ else
     tuned-adm profile virtual-guest
 fi
 
+# Enable firewall (firewalld is enabled by default on EL)
+if [ "${FLAVOR}" = "rhel" ]; then
+    dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
+    systemctl enable --now firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
+elif [ "${FLAVOR}" = "debian" ]; then
+    apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
+    systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
+    ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
+    ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+fi
+
 # Enable guest agent on KVM
-if [ ${IS_VIRTUAL} == true ]; then
+if [ ${IS_VIRTUAL} = true ]; then
     log "Setting up Qemu guest agent"
-    setsebool -P virt_qemu_ga_read_nonsecurity_files 1 2>> "${LOG_FILE}" || log "Failed to SELinux for qemu virtual machine" "ERROR"
-	  systemctl enable qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to start qumu-guest-agent" "ERROR"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -y qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to install qemu-guest-agent" "ERROR"
+        setsebool -P virt_qemu_ga_read_nonsecurity_files 1 2>> "${LOG_FILE}" || log "Failed to SELinux for qemu virtual machine" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to install qemu-guest-agent" "ERROR"
+    else
+        log_quit "Cannot setup qemu-guest-agent on this system"
+    fi
+	systemctl enable qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to start qumu-guest-agent" "ERROR"
 fi
 
 # Prometheus support
@@ -673,7 +783,11 @@ if [ $? -eq 0 ]; then
     log "Installing Node exporter"
     cd /opt || log "No /opt directory found"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=true INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+    if type curl > /dev/null 2>&1; then
+        curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=true INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+    else
+        wget -qO- https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=true INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+    fi
 else
     log "No node_exporter installed" "ERROR"
 fi
@@ -681,7 +795,7 @@ fi
 # Prometheus el_configurator version support
 cat << 'EOF' > /etc/cron.d/el_configurator
 # Run el_configurator prometheus metrics every 5 minutes
-*/5 * * * * root /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
+*/5 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
 
@@ -739,12 +853,14 @@ EOF
 # Clear caches, files, and logs
 /bin/rm -rf /tmp/* /tmp/.[a-zA-Z]* /var/tmp/*
 /bin/rm -rf /etc/*- /etc/*.bak /etc/*~ /etc/sysconfig/*~
-/bin/rm -rf /var/cache/dnf/* /var/cache/yum/* /var/log/rhsm/*
-/bin/rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/*
-/bin/rm -rf /var/lib/NetworkManager/* /var/lib/unbound/*.key
 /bin/rm -rf /var/log/*debug /var/log/dmesg*
-/bin/rm -rf /var/lib/cloud/* /var/log/cloud-init*.log
+/bin/rm -rf /var/lib/cloud/a* /var/log/cloud-init*.log
 /bin/rm -rf /var/lib/authselect/backups/*
+if [ "${FLAVOR}" = "rhel" ]; then
+    /bin/rm -rf /var/cache/dnf/* /var/cache/yum/* /var/log/rhsm/*
+    /bin/rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/*
+    /bin/rm -rf /var/lib/NetworkManager/* /var/lib/unbound/*.key
+fi
 #/bin/rm -rf /var/log/anaconda
 
 # Make sure we write everything to disk

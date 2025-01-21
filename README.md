@@ -4,14 +4,16 @@
 [![Bash linter](https://github.com/netinvent/el_scripts/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/netinvent/el_scripts/actions/workflows/shellcheck.yml)
 
 
-## Redhat Enterprise Linux / AlmaLinux / RockyLinux anaconda scipts
+## Enterprise Linux configuration collection
 
-This script collection is designed to work on Redhat / AlmaLinux / RockyLinux / CentOS and other EL8 / EL9 clones.  
+This script collection is designed to work on:
+- Redhat / AlmaLinux / RockyLinux / CentOS and other EL8 / EL9 clones
+- Debian 12
 
 
 ### Enterprise Linux configurator script
 
-The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 High, and configure various enhancements. The script is already included in the kickstart file.
+The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 profiles, and configure various enhancements. The script is already included in the kickstart file.
 
 To configure an existing setup, you can use the following
 
@@ -23,7 +25,25 @@ Adding Prometheus node_exporter, the script will also add two new metrics:
 - `el_configurator_setup_date` which will contain the timestamp of the last el_configurator run
 - `el_configurator_state` which will contain state (0=Success, 1=Failure/Missing) of last run
 
-### Kickstart file
+The `el_configurator` script will also provide the following setups:
+
+- Optional packages if physical machine
+    - pre-configured smartmontools daemon
+    - Optional IT8613 support
+    - Intel TCO Watchdog support
+    - Tuned config profiles npf-eco and npf-perf
+    - Qemu guest agent setup on KVM machines
+- Enabling serial console on tty and grub interface
+    - Add `resize_term` and `resize_term2` scripts which allow to deal with tty resizing in terminal
+- Optional steps if DHCP internet is found
+    - Installation of non standard packages
+    - ANSSI-BP028 SCAP Profile configuration with report
+    - Prometheus Node exporter installation
+    - Setup firewall
+- Cleanup of image after setup
+
+
+### RHEL specific Kickstart file
 
 The kickstart file contains a python script which handles automagic partitioning and other small adjustemnts as pre script, and a machine setup script as post script, that will install additions and configure the system.  
 
@@ -43,26 +63,13 @@ Automatic setup of machines with
 
 Of course, you can adjust those values or create new partition schemas directly in the python script.
 
-The kickstat post-script section also provides the following:
+The kickstart post-script section includes the `el_configurtor.sh` script.
 
-- Optional packages if physical machine
-    - pre-configured smartmontools daemon
-    - Optional IT8613 support
-    - Intel TCO Watchdog support
-    - Tuned config profiles npf-eco and npf-perf
 - Optional setups on virtual machines
     - Exclusion of firmware packages
-    - Qemu guest agent setup on KVM machines
-- Enabling serial console on tty and grub interface
-    - Add resize_term() and resize_term2() functions which allows to deal with tty resizing in terminal
-- Optional steps if DHCP internet is found
-    - Installation of non standard packages
-    - ANSSI-BP028-High SCAP Profile configuration with report
-    - Prometheus Node exporter installation
-- Enable cockpit and allow non root users
-- Cleanup of image after setup
 
-#### Technical notes about this script
+
+##### Technical notes about the kickstart script
 
 Instead of relying on anaconda for partitioning, the script will handle partitioning via parted to allow usage of non mounted partitions for readonly-root setups with stateful partitions which should not be mounted via fstab.
 
@@ -70,12 +77,12 @@ The script can also optionally reserve 5% disk space at the end of physical disk
 
 If the installation fails for some reason, the logs will be found in `/tmp/prescript.log`
 
-#### Restrictions
+##### Restrictions
 
 Using LVM partitioning is incompatible with stateless partitioning since the latter requires partitions without mountpoints.  
 As of today, the python script only uses a single disk. Multi disk support can be added on request.
 
-### Troubleshooting
+##### Troubleshooting
 
 When anaconda install fails, you have to change the terminal (CTRL+ALT+F2) in order to check file `/tmp/prescript.log`.  
 Using a serial console, you'll have to use ESC+TAB in order to change terminal.
@@ -85,22 +92,17 @@ In that case, just reboot and reinstall, since the disk has been emptied, everyt
 
 ## Other scripts
 
-### Machine setup
-
-The machine setup script is the same as the post-script section of the kickstart script, but can be executed on an already running system.  
-It provides the same services as the kickstart script.
-
 ### Setup Hypervisor
 
-Setup KVM environment including X11 forwarding and bridging.
+Setup KVM environment including X11 forwarding and bridging on EL 9.
 
 ### Setup OPNSense
 
-Download and instlal OPNSense firewall and passthrough PCI NICS according to their address.
+Download and instlal OPNSense firewall and passthrough PCI NICS according to their address on EL 9.
 
 ### Setup Readonly
 
-Transform a RHEL 9 machine into readonly, especially if hypervisor exists
+Transform a EL 9 machine into readonly, especially if hypervisor exists.
 
 ### Setup Prometheus
 

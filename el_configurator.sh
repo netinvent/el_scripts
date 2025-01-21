@@ -4,17 +4,20 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025012101"
+SCRIPT_BUILD="2025012102"
 
-BRAND_NAME=NetPerfect
+BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
+VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 BRAND_VER=4.6
 LOG_FILE=/root/.el-configurator.log
-POST_INSTALL_SCRIPT_GOOD=true
+NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall
 
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"
 # where flavor in rhel,debian and release = major os verison
 SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
+
+POST_INSTALL_SCRIPT_GOOD=true
 
 log() {
     __log_line="${1}"
@@ -63,7 +66,7 @@ is_virtual() {
             IS_VIRTUAL=false
         else
             # Special diag for kvm machines
-            dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|${BRAND_NAME}" > /dev/null 2>&1
+            dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|${VIRT_BRAND_NAME}" > /dev/null 2>&1
             if [ $? -eq 0 ]; then
                 IS_VIRTUAL=true
                 log "Detected this machine as virtual using hypervisor search"
@@ -168,6 +171,16 @@ IPv6 \6
 
 EOF
 
+check internet
+if [ if $? -eq 0 ]; then
+    log "Updating system"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
+    fi
+fi
+  
 # Disable --fetch-remote-resources on machines without internet
 [ ! -d /root/openscap_report ] && mkdir /root/openscap_report
 
@@ -784,9 +797,9 @@ if [ $? -eq 0 ]; then
     cd /opt || log "No /opt directory found"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
     if type curl > /dev/null 2>&1; then
-        curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=true INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+        curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
     else
-        wget -qO- https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=true INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+        wget -qO- https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
     fi
 else
     log "No node_exporter installed" "ERROR"
@@ -836,7 +849,7 @@ cat << EOF > /etc/motd
 #                                                          #
 #               !! Systeme en production !!                #
 #               Toute modification doit être               #
-#                inscrite dans le cahier de                #
+#               inscrite dans le registre de               #
 #                 gestion des changements.                 #
 #                                                          #
 #       Toute connexion à ce système est journalisée       #

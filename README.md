@@ -16,14 +16,14 @@ This script collection is designed to work on:
 The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 profiles, and configure various enhancements. The script is already included in the kickstart file.
 
 To configure an existing setup, you can use the following  
-[!WARNING]
-Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
+>[!WARNING]
+>Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
 ```sh
 curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | sh -
 ```
 
-[!infO]
-A more secure way of doing
+>[!INFO]
+>A more secure way of doing
 ```
 curl -OL ttps://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh
 ## Manual code review (or sha256sum check)

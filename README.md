@@ -22,7 +22,7 @@ To configure an existing setup, you can use the following
 curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | sh -
 ```
 
->[!INFO]
+>[!NOTE]
 >A more secure way of doing
 ```
 curl -OL ttps://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh

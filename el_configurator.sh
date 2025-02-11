@@ -807,8 +807,8 @@ fi
 
 # Prometheus el_configurator version support
 cat << 'EOF' > /etc/cron.d/el_configurator
-# Run el_configurator prometheus metrics every 5 minutes
-*/5 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
+# Run el_configurator prometheus metrics every hour only
+45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
 

@@ -19,15 +19,15 @@ To configure an existing setup, you can use the following
 >[!WARNING]
 >Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
 ```sh
-curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | sh -
+curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | bash -
 ```
 
 >[!NOTE]
 >A more secure way of doing
 ```
-curl -OL ttps://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh
+curl -OL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh
 ## Manual code review (or sha256sum check)
-sh ./el_configurator.sh
+bash ./el_configurator.sh
 ```
 
 

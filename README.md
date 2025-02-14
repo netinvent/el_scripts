@@ -43,13 +43,15 @@ The `el_configurator` script will also provide the following setups:
     - Intel TCO Watchdog support
     - Tuned config profiles npf-eco and npf-perf
     - Qemu guest agent setup on KVM machines
-- Enabling serial console on tty and grub interface
+- Optional enabling serial console on tty and grub interface
     - Add `resize_term` and `resize_term2` scripts which allow to deal with tty resizing in terminal
 - Optional steps if DHCP internet is found
     - Installation of non standard packages
     - ANSSI-BP028 SCAP Profile configuration with report
     - Prometheus Node exporter installation
     - Setup firewall
+    - Setup fail2ban for SSH
+    - Tune SSH keepalives
 - Cleanup of image after setup
 
 

@@ -679,7 +679,7 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" == true ]; then
         grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         # Replace existing console arguments
-        if grep "GRUB_CMDLINE_LINUX=.*console.*" > /dev/null 2>&1; then
+        if grep "GRUB_CMDLINE_LINUX=.*console.*" /etc/default/grub > /dev/null 2>&1; then
             sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0 \3"#g' /etc/default/grub
         # Add non existing console arguments
         else

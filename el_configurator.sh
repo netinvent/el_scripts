@@ -20,7 +20,7 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=false
 
 # Configure serial terminal
-USE_SERIAL_TERMINAL=true
+CONFIGURE_SERIAL_TERMINAL=true
 
 POST_INSTALL_SCRIPT_GOOD=true
 

@@ -647,10 +647,16 @@ def setup_package_lists() -> bool:
         "pipewire",
     ]
 
+    package_require_virt_list = [
+        "qemu-guest-agent"
+    ]
+
     package_add_physical_list = ["lm_sensors", "smartmontools"]
     try:
         with open("/tmp/packages", "w", encoding="utf-8") as fp:
             if IS_VIRTUAL and REMOVE_VIRTUAL_PACKAGES:
+                for package in package_require_virt_list:
+                    fp.write(f"{package}\n")
                 for package in package_ignore_virt_list:
                     fp.write(f"-{package}\n")
             elif not IS_VIRTUAL and ADD_PHYSICAL_PACKAGES:

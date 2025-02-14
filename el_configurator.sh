@@ -22,7 +22,6 @@ SCAP_PROFILE=anssi_bp28_high
 # Configure serial terminal
 CONFIGURE_SERIAL_TERMINAL=true
 
-POST_INSTALL_SCRIPT_GOOD=true
 
 log() {
     __log_line="${1}"
@@ -160,6 +159,9 @@ check_internet() {
     return 1
 }
 
+## Script entry point
+POST_INSTALL_SCRIPT_GOOD=true
+
 get_el_version
 is_virtual
 
@@ -201,10 +203,15 @@ if [ "${SCAP_PROFILE}" != false ]; then
             # which are not available in stable as of 2025/02/14
             if [ "${RELEASE}" = 12 ]; then
                 log "Downloading up ssg openscap data for debian 12"
-                curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded" "ERROR"
-                curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded" "ERROR"
+                if type curl > /dev/null 2>&1; then
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
+                else
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
+                fi
                 dpkg -i ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
-                dpkg -i ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded" "ERROR"
+                dpkg -i ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
             fi
             apt install -y openscap-utils  2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         else

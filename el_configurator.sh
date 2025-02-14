@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025012102"
+SCRIPT_BUILD="2025021401"
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
@@ -12,10 +12,15 @@ BRAND_VER=4.6
 LOG_FILE=/root/.el-configurator.log
 NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall
 
+# Select SCAP PROFILE, choosing "" disables scap profile
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"
 # where flavor in rhel,debian and release = major os verison
 SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
+#SCAP_PROFILE=false
+
+# Configure serial terminal
+USE_SERIAL_TERMINAL=true
 
 POST_INSTALL_SCRIPT_GOOD=true
 
@@ -178,63 +183,61 @@ if [ $? -eq 0 ]; then
         dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
-    fi
-fi
-  
-# Disable --fetch-remote-resources on machines without internet
-[ ! -d /root/openscap_report ] && mkdir /root/openscap_report
-
-check_internet
-if [ $? -eq 0 ]; then
-    # Let's reinstall openscap in case we're running this script on a non prepared machine
-    if [ "$FLAVOR" = "rhel" ]; then
-        dnf install -y openscap scap-security-guide 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
-    elif [ "${FLAVOR}" = "debian" ]; then
-        # Temporary setup testing for debian 12 anssi profiles which need ssg-debian 0.17.4 at least
-        # which are not available in stable as of 2025/01/21
-        if [ "$RELEASE" = 12 ]; then
-            log "Setting up testing repo for debian 12"
-            echo "deb http://deb.debian.org/debian testing main contrib non-free non-free-firmware" >> /etc/apt/sources.list.d/testing.list || log "Cannot activate testing repo"
-            echo 'APT::Default-Release "bookworm";' > /etc/apt/apt.conf.d/default-release
-            apt update
-        fi
-        apt install -t testing -y ssg-debian 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles cannot be installed" "ERROR"
-        if [ -f /etc/apt/sources.list.d/testing.list ]; then
-            rm -f /etc/apt/sources.list.d/testing.list
-            apt update
-            rm -f /etc/apt/apt.conf.d/default-release
-        fi
-        apt install -y openscap-utils ssg-base 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
-    else
-        loq_quit "Cannot setup OpenSCAP on this system"
-    fi
-    log "Setting up scap profile with remote resources"
-    oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
-    # result 2 is partially applied, which can be normal
-    if [ $? -eq 1 ]; then
-        log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
-    else
-        log "Generating scap results with remote resources"
-        oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
-        [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
-    fi
-else
-    log "Setting up scap profile without internet"
-    oscap xccdf eval --profile ${SCAP_PROFILE} --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
-    if [ $? -eq 1 ]; then
-        log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
-    else
-        log "Generating scap results without internet"
-        oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
-        [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
+        apt dist-upgrade -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
     fi
 fi
 
+if [ "${SCAP_PROFILE}" != false ]; then  
+    # Disable --fetch-remote-resources on machines without internet
+    [ ! -d /root/openscap_report ] && mkdir /root/openscap_report
 
-# Fix firewall cannot load after anssi_bp28_high
-if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
-    log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
-    setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
+    check_internet
+    if [ $? -eq 0 ]; then
+        # Let's reinstall openscap in case we're running this script on a non prepared machine
+        if [ "${FLAVOR}" = "rhel" ]; then
+            dnf install -y openscap scap-security-guide 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+        elif [ "${FLAVOR}" = "debian" ]; then
+            # Download debian 12 anssi profiles which need ssg-debian 0.17.4 at least
+            # which are not available in stable as of 2025/02/14
+            if [ "${RELEASE}" = 12 ]; then
+                log "Downloading up ssg openscap data for debian 12"
+                curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded" "ERROR"
+                curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded" "ERROR"
+                dpkg -i ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
+                dpkg -i ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded" "ERROR"
+            fi
+            apt install -y openscap-utils  2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+        else
+            loq_quit "Cannot setup OpenSCAP on this system"
+        fi
+        log "Setting up scap profile with remote resources"
+        oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        # result 2 is partially applied, which can be normal
+        if [ $? -eq 1 ]; then
+            log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
+        else
+            log "Generating scap results with remote resources"
+            oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
+        fi
+    else
+        log "Setting up scap profile without internet"
+        oscap xccdf eval --profile ${SCAP_PROFILE} --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        if [ $? -eq 1 ]; then
+            log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
+        else
+            log "Generating scap results without internet"
+            oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
+        fi
+    fi
+
+
+    # Fix firewall cannot load after anssi_bp28_high
+    if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
+        log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
+        setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
+    fi
 fi
 
 # Don't fetch dnf epel packages since it's not sure we get internet
@@ -657,26 +660,28 @@ else
     log "This is a virtual machine. We will not setup hardware tooling"
 fi
 
-# Configure serial console
-log "Setting up serial console"
-systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
-sed -i 's/^GRUB_TERMINAL="console"/GRUB_TERMINAL="serial console"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
-sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
-# Update grub to add console
-if [ "${FLAVOR}" = "rhel" ]; then
-    grubby --update-kernel=ALL --args="console=ttyS0,115200,n8 console=tty0" || log "Enabling serial getty failed" "ERROR"
-    grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
-elif [ "${FLAVOR}" = "debian" ]; then
-    # Replace existing console arguments
-    if grep "GRUB_CMDLINE_LINUX=.*console.*" > /dev/null 2>&1; then
-        sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0 \3"#g' /etc/default/grub
-    # Add non existing console arguments
+if [ "${CONFIGURE_SERIAL_TERMINAL}" == true ]; then
+    # Configure serial console
+    log "Setting up serial console"
+    systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
+    sed -i 's/^GRUB_TERMINAL="console"/GRUB_TERMINAL="serial console"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
+    sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
+    # Update grub to add console
+    if [ "${FLAVOR}" = "rhel" ]; then
+        grubby --update-kernel=ALL --args="console=ttyS0,115200,n8 console=tty0" || log "Enabling serial getty failed" "ERROR"
+        grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        # Replace existing console arguments
+        if grep "GRUB_CMDLINE_LINUX=.*console.*" > /dev/null 2>&1; then
+            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0 \3"#g' /etc/default/grub
+        # Add non existing console arguments
+        else
+            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0"#g' /etc/default/grub
+        fi
+        grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
     else
-        sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0"#g' /etc/default/grub
+        log_quit "Cannot setup serial console on this system"
     fi
-    grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
-else
-    log_quit "Cannot setup serial console on this system"
 fi
 
 
@@ -776,6 +781,23 @@ elif [ "${FLAVOR}" = "debian" ]; then
     ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
 fi
 
+# Install fail2ban
+if [ "${SETUP_FAIL2BAN}" != false ]; then
+    log "Setting up fail2ban"
+    if [ "${FLAVOR}" == "rhel" ]; then
+        dnf install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
+        # On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
+        if [ "${RELEASE}" == 12 ]; then
+            sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
+        fi
+    fi
+    # Enable SSHD jail
+    sed -i 's#^\[sshd\]#\[sshd\]\nenabled = true#g' /etc/fail2ban/jail.conf
+    systemctl enable --now fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
+fi
+
 # Enable guest agent on KVM
 if [ ${IS_VIRTUAL} = true ]; then
     log "Setting up Qemu guest agent"
@@ -836,6 +858,13 @@ sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' /etc/systemd/syste
 log "Setup cake qdisc algorith and bbr congestion control"
 echo net.core.default_qdisc=cake >> /etc/sysctl.d/99-sched.conf || log "Failed to write to /etc/sysctl.d/99-sched.conf" "ERROR"
 echo net.ipv4.tcp_congestion_control=bbr >> /etc/sysctl.d/99-sched.conf || log "Failed to write to /etc/sysctl.d/99-sched.conf" "ERROR"
+
+# Add ClientAlive to SSHD
+echo "TCPKeepAlive no" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
+echo "ClientAliveInterval 120" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
+echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
+
+
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then

@@ -601,6 +601,9 @@ EOF
 
 SCRIPT_VER=2024040701
 
+# Make sure cpupower output is language consistent
+export LANG=C
+
 # Powersave will keep low frequency no matter what. If available, use conservative. If not use powersave
 if cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors | grep conservative > /dev/null; then
 	governor=conservative
@@ -635,6 +638,9 @@ EOF
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
+
+# Make sure cpupower output is language consistent
+export LANG=C
 
 # Performance will keep CPU freq at max all the time. Prefer ondemand if available
 if cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors | grep ondemand > /dev/null; then

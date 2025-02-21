@@ -681,15 +681,15 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" == true ]; then
     sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
     # Update grub to add console
     if [ "${FLAVOR}" = "rhel" ]; then
-        grubby --update-kernel=ALL --args="console=ttyS0,115200,n8 console=tty0" || log "Enabling serial getty failed" "ERROR"
+        grubby --update-kernel=ALL --args="console=tty0 console=ttyS0,115200,n8" || log "Enabling serial getty failed" "ERROR"
         grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         # Replace existing console arguments
         if grep "GRUB_CMDLINE_LINUX=.*console.*" /etc/default/grub > /dev/null 2>&1; then
-            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0 \3"#g' /etc/default/grub
+            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=tty0 console=ttyS0,115200,n8 \3"#g' /etc/default/grub
         # Add non existing console arguments
         else
-            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1 console=ttyS0,115200,n8 console=tty0"#g' /etc/default/grub
+            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1  console=tty0 console=ttyS0,115200,n8"#g' /etc/default/grub
         fi
         grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
     else

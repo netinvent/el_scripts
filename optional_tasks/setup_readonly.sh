@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2024110501 for RHEL9
+## Readonly setup script 2025021901 for RHEL9
 
 # Requirements:
 # RHEL9 installed
@@ -69,15 +69,26 @@ echo "/var/lib/pcp" >> /etc/statetab.d/cockpit || log "Cannot create /etc/statet
 echo "/etc/pcp" >> /etc/statetab.d/cockpit || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
 # dnf cache
 echo "/var/lib/dnf" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d/dnf" "ERROR"
+# For DNF to work we'd need /var/cache/dnf but obviously /var/cache overrides this
 echo "/var/cache" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d/dnf" "ERROR"
+echo "/var/lib/kdump" >> /etc/statetab.d/kdump || log "Cannot create /etc/statetab.d/kdump" "ERROR"
 
 if [ "${target}" == "hv" ]; then
     log "Configuring specific HV stateless settings"
     echo "Configuring specific HV Stateless" || log "Cannot configure HV stateless" "ERROR"
+
+    # Don't put images into /var/lib/libvirt/images since it will be mounted as stateless partition
+    # so if there were to be disk images, stateless partition would fill
+    # libvirt needs the following directories to be RW in order to work
+    # /var/lib/libvirt/dnsmasq
+    # /var/lib/libvirt/filesystems
+    # /var/lib/libvirt/swtpm
+    # /var/lib/libvirt/boot
+    # /var/lib/libvirt/network
+    # /etc/libvirt
+
     echo "/var/lib/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
     echo "/etc/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
-    # For DNF to work we'd need /var/cache/dnf but obviously we won't
-    
     
 fi
 

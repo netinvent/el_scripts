@@ -10,7 +10,7 @@ BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 BRAND_VER=4.6
 LOG_FILE=/root/.el-configurator.log
-NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall
+NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
 
 # Select SCAP PROFILE, choosing "" disables scap profile
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"

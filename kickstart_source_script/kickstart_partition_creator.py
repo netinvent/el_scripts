@@ -78,13 +78,13 @@ REMOVE_VIRTUAL_PACKAGES = True
 # Partition schema for standard KVM Hypervisor
 PARTS_HV = [
     {"size": 30720, "fs": "xfs", "mountpoint": "/"},
-    {"size": True, "fs": "xfs", "mountpoint": "/var/lib/libvirt/images", "fsoptions": "nodev,nosuid,noexec"},
+    {"size": True, "fs": "xfs", "mountpoint": "/data", "fsoptions": "nodev,nosuid,noexec"},
 ]
 
 # Partition schema for stateless KVM Hypervisor
 PARTS_HV_STATELESS = [
     {"size": 30720, "fs": "xfs", "mountpoint": "/"},
-    {"size": True, "fs": "xfs", "mountpoint": "/var/lib/libvirt/images", "fsoptions": "nodev,nosuid,noexec"},
+    {"size": True, "fs": "xfs", "mountpoint": "/data", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 30720, "fs": "xfs", "mountpoint": None, "label": "STATEFULRW"},
 ]
 

@@ -38,6 +38,7 @@ log() {
 
 log_quit() {
     log "${1}" "${2}"
+    log "Exiting script"
     exit 1
 }
 
@@ -682,7 +683,7 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" == true ]; then
     # Update grub to add console
     if [ "${FLAVOR}" = "rhel" ]; then
         grubby --update-kernel=ALL --args="console=tty0 console=ttyS0,115200,n8" || log "Enabling serial getty failed" "ERROR"
-        grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
+        grub2-mkconfig --update-bls-cmdline -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         # Replace existing console arguments
         if grep "GRUB_CMDLINE_LINUX=.*console.*" /etc/default/grub > /dev/null 2>&1; then

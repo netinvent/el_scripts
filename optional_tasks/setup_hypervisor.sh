@@ -12,6 +12,9 @@
 # COCKPIT ALLOWED USER
 [ -z "${ADMIN_USER}" ] && ADMIN_USER=myuser
 
+# Setup SNMP
+[ -z "${SETUP_SNMP}" ] && SETUP_SNMP=true
+
 # HARDWARE ID for NetPerfect hardware
 # or UNKNOWN for other hardware
 [ -z "${HARDWARE_ID}" ] && HARDWARE_ID="UNKNOWN"
@@ -48,6 +51,7 @@ function log {
 
 function log_quit {
     log "${1}" "${2}"
+    log "Exiting script"
     exit 1
 }
 
@@ -55,7 +59,7 @@ echo "#### Installing prerequisites ####"
 
 dnf install -y epel-release || log "Failed to install epel release" "ERROR"
 dnf install -y policycoreutils-python-utils || log "Failed to install selinux tools" "ERROR"
-dnf install -y virt-what net-snmp tar bzip2 || log "Failed to install system tools" "ERROR"
+dnf install -y virt-what tar bzip2 || log "Failed to install system tools" "ERROR"
 dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines cockpit-pcp || log "Failed to install KVM" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
@@ -76,9 +80,10 @@ echo "#### Setting up system certificate ####"
 openssl req -nodes -new -x509 -days 7300 -newkey rsa:4096 -keyout "${CERT_DIR}/private/${COMMON_NAME// /_}.key" -subj "${CRT_SUBJECT}" -out "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt"  || log "Failed to generate local cert" "ERROR"
 cat "${CERT_DIR}/private/${COMMON_NAME// /_}.key" "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt" > "${TARGET_DIR}/${COMMON_NAME// /_}.pem" || log "Failed to concat local cert" "ERROR"
 
-echo "#### Setup SNMP ####"
-
-cat << 'EOF' > /tmp/snmpd_part.conf
+if [ "${SETUP_SNMP}" == true ]; then
+    echo "#### Setup SNMP ####"
+    dnf install -y net-snmp net-snmp-utils || log "Failed to install SNMP" "ERROR"
+    cat << 'EOF' > /tmp/snmpd_part.conf
 # View all tree in default systemview
 view    systemview    included   .1
 # System data
@@ -92,9 +97,10 @@ view   systemview    included   .1.3.6.1.4.1.2021.9
 # CPU
 view    systemview    included   .1.3.6.1.4.1.2021.10
 EOF
-[ $? -eq 0 ] || log "Failed to create /tmp/snmpd_part.conf" "ERROR"
+    [ $? -eq 0 ] || log "Failed to create /tmp/snmpd_part.conf" "ERROR"
 
-sed -i '/^view    systemview    included   .1.3.6.1.2.1.25.1.1$/ r /tmp/snmpd_part.conf' /etc/snmp/snmpd.conf 2>> "${LOG_FILE}" || log "Configuring SNMP failed" "ERROR"
+    sed -i '/^view    systemview    included   .1.3.6.1.2.1.25.1.1$/ r /tmp/snmpd_part.conf' /etc/snmp/snmpd.conf 2>> "${LOG_FILE}" || log "Configuring SNMP failed" "ERROR"
+fi
 
 echo "#### Setting up cockpit & performance logging ####"
 systemctl enable pmcd || log "Failed to enable pmcd" "ERROR"

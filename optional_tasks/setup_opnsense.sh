@@ -5,7 +5,7 @@
 # Requirements:
 # RHEL9 installed with NPF hypervisor script
 
-IMAGE_DIR=/var/lib/libvirt/images
+IMAGE_DIR=/data
 
 # VM Configuration
 VCPUS=6
@@ -33,6 +33,7 @@ function log {
 
 function log_quit {
     log "${1}" "${2}"
+    log "Exiting script"
     exit 1
 }
 

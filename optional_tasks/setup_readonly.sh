@@ -25,6 +25,7 @@ function log {
 
 function log_quit {
     log "${1}" "${2}"
+    log "Exiting script"
     exit 1
 }
 
@@ -72,6 +73,9 @@ echo "/var/lib/dnf" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d
 # For DNF to work we'd need /var/cache/dnf but obviously /var/cache overrides this
 echo "/var/cache" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d/dnf" "ERROR"
 echo "/var/lib/kdump" >> /etc/statetab.d/kdump || log "Cannot create /etc/statetab.d/kdump" "ERROR"
+# TPM
+echo "/var/lib/tpm2-tss" >> /etc/statetab.d/tpm || log "Cannot create /etc/statetab.d/tpm" "ERROR" 
+
 
 if [ "${target}" == "hv" ]; then
     log "Configuring specific HV stateless settings"
@@ -90,6 +94,9 @@ if [ "${target}" == "hv" ]; then
     echo "/var/lib/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
     echo "/etc/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
     
+    # Move default pool to data
+    mkdir /data
+    sed -i 's#/var/lib/libvirt/images#/data#g' /etc/libvirt/storage/images.xml
 fi
 
 # Keep logs persistent too

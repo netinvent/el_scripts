@@ -30,6 +30,7 @@ function log {
 
 function log_quit {
     log "${1}" "${2}"
+    log "Exiting script"
     exit 1
 }
 

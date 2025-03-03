@@ -5,14 +5,14 @@
 LOG_FILE=/root/.npf-postinstall.log
 POST_INSTALL_SCRIPT_GOOD=true
 
-read -r -p "UPGRADE (Y/N): " UPGRADE
+read -r -p "IS THIS AND UPGRADE SETUP (Y/N): " UPGRADE
 
 if [ "${UPGRADE}" == "Y" ] || [ "${UPGRADE}" == "y" ]; then
     UPGRADE=true
 else
     UPGRADE=false
-    read -r -p "PROMETHEUS TENANT: " tenant
-    read -r -p "PROMETHEUS TENANT API PASSWORD: " tenant_api_password
+    read -r -p "PROMETHEUS TENANT (if multi-tenant): " tenant
+    read -r -p "PROMETHEUS TENANT API PASSWORD (if remote storage is used): " tenant_api_password
 fi
 
 export USERNAME=prometheus
@@ -132,16 +132,15 @@ copy_binaries() {
         [ -z "${binary}" ] && continue
 
         if [ -f "${binary}" ]; then
-            old_binary="${binary}_$(date +%Y-%m-%d-%H-%M-%S).bak"
-            log "Creating backup of ${binary} to ${old_binary}"
-            if mv "${prefix}/${binary}" "${prefix}/${old_binary}"; then
-                cp "${binary}" "${prefix}" || log "Failed to copy ${binary} to ${prefix}" "ERROR"
-                chown "${USERNAME}:${USERNAME}" "${prefix}/${binary}" || log "Failed to change ownership to ${USERNAME} on binary ${prefix}/${binary}" "ERROR"
-                chmod 770 "${prefix}/${binary}" || log "Failed to change permissions on binary ${prefix}/${binary}" "ERROR"
-                semanage fcontext -a -t bin_t "${prefix}/${binary}" || log "Failed to set selinux context for binary ${prefix}/${binary}" "ERROR"
-            else
-                log "Failed to backup ${binary}" "ERROR"
+            if [ -f "${prefix}/${binary}" ]; then
+                log "Creating backup of ${binary} to ${old_binary}"
+                old_binary="${binary}_$(date +%Y-%m-%d-%H-%M-%S).bak"
+                mv "${prefix}/${binary}" "${prefix}/${old_binary}" || log "Failed to create backup of ${prefix}/${binary}" "ERROR"
             fi
+            cp "${binary}" "${prefix}" || log "Failed to copy ${binary} to ${prefix}" "ERROR"
+            chown "${USERNAME}:${USERNAME}" "${prefix}/${binary}" || log "Failed to change ownership to ${USERNAME} on binary ${prefix}/${binary}" "ERROR"
+            chmod 770 "${prefix}/${binary}" || log "Failed to change permissions on binary ${prefix}/${binary}" "ERROR"
+            semanage fcontext -a -t bin_t "${prefix}/${binary}" || log "Failed to set selinux context for binary ${prefix}/${binary}" "ERROR"
         else
             log "Binary ${binary} does not exist. Skipping copy"
         fi

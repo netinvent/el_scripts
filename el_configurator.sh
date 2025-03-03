@@ -886,9 +886,9 @@ echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config || log "Failed to tune sshd
 if [ "${ALLOW_SUDO}" == true ]; then
     # Patch sudoers file since noexec is set by default, which prevents sudo
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
-    if "${FLAVOR}" = "rhel"; then
+    if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
-    elif "${FLAVOR}" = "debian"; then
+    elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     fi

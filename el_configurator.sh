@@ -22,6 +22,9 @@ SCAP_PROFILE=anssi_bp28_high
 # Configure serial terminal
 CONFIGURE_SERIAL_TERMINAL=true
 
+# By default, ANSSI profiles disable sudo (which is a good thing)
+ALLOW_SUDO=false
+
 
 log() {
     __log_line="${1}"
@@ -258,6 +261,8 @@ if [ $? -eq 0 ]; then
         dnf install -4 -y htop atop nmon iftop iptraf tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y htop atop nmon iftop iptraf-ng tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        # Required for audit2why SELinux when enabling SELinux on Debian
+        # apt install -y dnf install -y policycoreutils-python-util 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
     fi
 else
     log "No epel available without internet. Didn't install additional packages."
@@ -878,7 +883,16 @@ echo "TCPKeepAlive no" >> /etc/ssh/sshd_config || log "Failed to tune sshd servi
 echo "ClientAliveInterval 120" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
 echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
 
-
+if [ "${ALLOW_SUDO}" == true ]; then
+    # Patch sudoers file since noexec is set by default, which prevents sudo
+    sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
+    if "${FLAVOR}" = "rhel"; then
+        dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
+    elif "${FLAVOR}" = "debian"; then
+        apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
+        chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
+    fi
+fi
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then

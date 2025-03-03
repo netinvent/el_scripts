@@ -111,8 +111,9 @@ stop_service() {
 get_version() {
     local binary="${1}"
 
-    version=$(${binary} --version 2>&1 | awk '{ print $2 }')
-    log "Installed ${binary} version\n:${version}"
+    version=$(${binary} --version 2>&1)
+    log "Installed ${binary} version:"
+    log "${version}"
 }
 
 goto_install_dir() {

@@ -110,7 +110,7 @@ Setup KVM environment including X11 forwarding and bridging on EL 9.
 
 ### Setup OPNSense
 
-Download and instlal OPNSense firewall and passthrough PCI NICS according to their address on EL 9.
+Download and install OPNSense firewall and passthrough PCI NICS according to their address on EL 9.
 
 ### Setup Readonly
 

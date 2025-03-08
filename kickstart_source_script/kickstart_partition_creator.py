@@ -15,7 +15,7 @@ __build__ = "2025011401"
 # LVM partitioning scheme is
 # | (efi) | boot | lv [data 1| data part n | swap]
 
-## Possible partitionning targets
+## Possible partitioning targets
 # generic: One big root partition
 # web: Generic web server setup
 # anssi: ANSSI-BP028 high profile compatible partitioning scheme
@@ -872,7 +872,7 @@ if not write_kickstart_partitions_file(partitions_schema):
     logger.critical(f"Error {errno}")
     sys.exit(errno)
 
-logger.info("Partitionning done. Please use '%include /tmp/partitions")
+logger.info("partitioning done. Please use '%include /tmp/partitions")
 
 if not setup_package_lists():
     errno=10

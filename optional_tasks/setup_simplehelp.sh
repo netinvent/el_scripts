@@ -46,7 +46,7 @@ echo "/opt/JWrapper-Remote Access" > /etc/statetab.d/simplehelp || log "Cannot c
 
 # Fix for simplehelp stopping because of systemd
 sed -i '/^ExecStart=.*/a RemainAfterExit=true\nRestartSec=300\nRestart=always' /etc/systemd/system/simplegateway.service 2>> "${LOG_FILE}" || log "Cannot reconfigure simplegateway.service" "ERROR"
-systemctl daemon-reload 2>> "${LOG_FILE}" || log "Cannot reload systemd deamons" "ERROR"
+systemctl daemon-reload 2>> "${LOG_FILE}" || log "Cannot reload systemd daemons" "ERROR"
 systemctl enable simplegateway 2>> "${LOG_FILE}" || log "Cannot enable simplegateway" "ERROR"
 systemctl restart simplegateway 2>> "${LOG_FILE}" || log "Cannot restart simplegateway" "ERROR"
 sleep 10

@@ -134,7 +134,7 @@ nmcli c add type bridge-slave ifname "${iface}" master kvmbr0 autoconnect yes 2>
 nmcli c up kvmbr0  2>> "${LOG_FILE}" || log "Enabling bridge failed" "ERROR"
 nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
 
-echo "#### Setting up virualization ####"
+echo "#### Setting up virtualization ####"
 cat << 'EOF' > /etc/sysconfig/libvirt-guests
 ON_BOOT=start
 ON_SHUTDOWN=shutdown

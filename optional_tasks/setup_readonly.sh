@@ -48,14 +48,14 @@ systemctl disable man-db-restart-cache-update.service 2>> "${LOG_FILE}" || log "
 sed -i 's/READONLY=no/READONLY=yes/g' /etc/sysconfig/readonly-root  2>> "${LOG_FILE}" || log "Cannot enable readonly-root" "ERROR"
 
 # Change default label of stateful partition to something less than 15 chars so XFS can hold that label
-# Thos should already be set by the VMv4 kickstart file
+# Those should already be set by the VMv4 kickstart file
 sed -i 's/STATE_LABEL=stateless-state/STATE_LABEL=STATEFULRW/g' /etc/sysconfig/readonly-root  2>> "${LOG_FILE}" || log "Cannot change stateful label" "ERROR"
 
 rm -f /etc/statetab.d/{snmp,nm,qemu,cockpit,rsyslog,prometheus,node_exporter,ztl} > /dev/null 2>&1
 rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1
 # statetab will be persistent volumes stored on a partition which label must match the
 # STATE_LABEL= directive in /etc/sysconfig/readonly-root (defaults to stateless-state)
-# Those dirs are stateful accross reboots
+# Those dirs are stateful across reboots
 # Keep in mind we need to label a partition with
 # xfs_admnin -L STATEFULRW /dev/disk/by-uuid/{some_uuid}
 # find uuid with lsblk -f
@@ -153,7 +153,7 @@ grub2-mkconfig -o /boot/grub2/grub.cfg || log "Cannot update grub.cfg" "ERROR"
 # The following patch is only necessary for readonly-root < 10.11.6 that comes with RHEL < 9.4
 # Let's not execute it anymore
 patch_readonly_root() {
-# Fix for statetab file not supporting space in dir nam
+# Fix for statetab file not supporting space in dir name
 # See our PR at https://github.com/fedora-sysv/initscripts/pull/471
 # Patch created via  diff -auw /usr/libexec/readonly-root /tmp/readonly-root > /tmp/readonly-root.npf.patch
     dnf install -y patch

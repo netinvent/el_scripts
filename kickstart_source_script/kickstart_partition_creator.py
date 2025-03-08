@@ -10,7 +10,7 @@ __build__ = "2025011401"
 
 ### This is a pre-script for kickstart files in RHEL 9
 ### Allows specific partition schemes with one or more data partitions
-# Standard paritioning scheme is
+# Standard partitioning scheme is
 # | (efi) | boot | root | data 1 | data part n | swap
 # LVM partitioning scheme is
 # | (efi) | boot | lv [data 1| data part n | swap]
@@ -56,7 +56,7 @@ HOSTNAME = "machine.npf.local"
 # If nameserver is not given, we'll use gateway as nameserver
 NETWORK = "dhcp"
 
-# Please note that the following arguments can be superseeded by kernel arguments
+# Please note that the following arguments can be superseded by kernel arguments
 # TARGET, USER_NAME, USER_PASSWORD, ROOT_PASSWORD, HOSTNAME, NETWORK, DISK_PATH (the disk we're installing the OS to, eg something like /dev/sda or /dev/vda or /dev/nvme0)
 # You need to specify that kernel argument as NPF_{ARGUMENT_NAME}=value, example
 # append initrd=initrd.img inst.ks=hd:LABEL=MYDISK:/ks.rhel9.cfg NPF_USER_NAME=bob
@@ -110,7 +110,7 @@ PARTS_WEB = [
 
 # Example partition schema for ANSSI-BP028 high profile
 # This example requires at least 65GiB of disk space
-# as it will also require swap space depeding on memory size, /boot and /boot/efi space
+# as it will also require swap space depending on memory size, /boot and /boot/efi space
 PARTS_ANSSI = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/"},
     {"size": 5120, "fs": "xfs", "mountpoint": "/usr", "fsoptions": "nodev"},
@@ -211,7 +211,7 @@ def get_first_disk_path() -> list:
     """
     Return list of disks
 
-    First, let's get the all the available disk names (ex hda,sda,vda)
+    First, let's get the all the available disk names (ex "hda","sda","vda","nvme0n1")
     We might have a /dev/zram0 device which is considered as disk, so we need to filter vdX,sdX,hdX
     """
     if DEV_MOCK:
@@ -234,7 +234,7 @@ def get_first_disk_path() -> list:
 def zero_disk(disk_path: str) -> bool:
     """
     Zero first disk bytes
-    We need this instead of "cleanpart" directive since we're partitionning manually
+    We need this instead of "cleanpart" directive since we're partitioning manually
     in order to have a custom partition schema
     We'll also wipe partitions and then the partition table
     """
@@ -466,7 +466,7 @@ def get_partition_schema(selected_partition_schema: dict) -> dict:
 
 def validate_partition_schema(partitions: dict) -> bool:
     """
-    Check if our partition schema doesn't exceeed disk size
+    Check if our partition schema doesn't exceed disk size
     """
     total_size = 0
     for partition in partitions.keys():
@@ -781,11 +781,11 @@ if DEV_MOCK:
 TARGET = TARGET.lower()
 DISK_PATH = get_first_disk_path()
 
-# Superseed 
+# Supersede 
 kernel_arguments = get_kernel_arguments()
 for argument_name, argument_value in kernel_arguments.items():
-    logger.info(f"Superseeding value {argument_name}={argument_value}")
-    # Special case when superseeding passwords
+    logger.info(f"Superseding value {argument_name}={argument_value}")
+    # Special case when Superseding passwords
     if argument_name == "ROOT_PASSWORD":
         IS_ROOT_PASSWORD_CRYPTED = False
     if argument_name == "USER_NAME":

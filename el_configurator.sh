@@ -955,7 +955,7 @@ if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
 else
     MOTD_STATUS="EL POST SCRIPT: SUCCESS"
 fi
-echo $MOTD_MSG > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
+echo "${MOTD_MSG}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
 sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"
 
 

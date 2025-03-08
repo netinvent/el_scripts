@@ -9,7 +9,30 @@ SCRIPT_BUILD="2025030801"
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 BRAND_VER=4.6
-LOG_FILE=/root/.el-configurator.log
+
+MOTD_MSG=$(cat <<EOF
+  __________________________________________________
+/ UNAUTHORIZED ACCESS TO THIS DEVICE IS PROHIBITED  \\
+|     
+| You must have explicit, authorized permission     |
+| to access or configure this device. Unauthorized  |
+| attempts and actions to access or use this system |
+| may result in civil and/or criminal penalties.    |
+| All activities performed on this device are       |
+| logged and monitored.                             |
+| this system                                       |
+\\                                                   /
+  --------------------------------------------------
+         \   ^__^ 
+          \  (oo)\_______
+             (__)\       )\/\\
+                 ||----w |
+                 ||     ||
+
+___MOTD_STATUS_DO_NOT_DELETE___
+EOF
+)
+
 NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
 
 # Select SCAP PROFILE, choosing "" disables scap profile
@@ -25,6 +48,8 @@ CONFIGURE_SERIAL_TERMINAL=true
 # By default, ANSSI profiles disable sudo (which is a good thing)
 ALLOW_SUDO=false
 
+
+LOG_FILE=/root/.el-configurator.log
 
 log() {
     __log_line="${1}"
@@ -926,24 +951,13 @@ fi
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
-    MOTD_MSG="EL POST SCRIPT: FAILURE"
+    MOTD_STATUS="EL POST SCRIPT: FAILURE"
 else
-    MOTD_MSG="EL POST SCRIPT: SUCCESS"
+    MOTD_STATUS="EL POST SCRIPT: SUCCESS"
 fi
-cat << EOF > /etc/motd
-############################################################
-# <<Un grand pouvoir implique de grandes responsabilités>> #
-#                                                          #
-#               !! Systeme en production !!                #
-#               Toute modification doit être               #
-#               inscrite dans le registre de               #
-#                 gestion des changements.                 #
-#                                                          #
-#       Toute connexion à ce système est journalisée       #
-#                  ${MOTD_MSG}                 #
-############################################################
-EOF
-[ $? -ne 0 ] && log "Failed to create /etc/motd" "ERROR"
+echo $MOTD_MSG > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
+sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"
+
 
 # Cleanup kickstart file replaced with inst.nosave=all_ks
 [ -f /root/anaconda-ks.cfg ] && /bin/shred -uz /root/anaconda-ks.cfg

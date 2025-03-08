@@ -178,23 +178,18 @@ set_conf_value() {
 	if [ -f "$file" ]; then
 		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
 			# Using -i.tmp for BSD compat
-			sed -i.tmp "s${separator}^${name}${xzz}.*${separator}${name}${xzz}${value}${separator}" "${file}"
+			sed -i.eltmp "s${separator}^${name}${sed_separator}.*${separator}${name}${sed_separator}${value}${separator}" "${file}"
 			if [ $? -ne 0 ]; then
 				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
 			fi
-			rm -f "$file.tmp"
+            # Remove temp file if exists
+			rm -f "$file.eltmp" > /dev/null 2>&1
 			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
 		else
-			echo "${name}${separator}${value}" >> "${file}"
-			if [ $? -ne 0 ]; then
-				log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
-			fi
+			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
 		fi
 	else
-		echo "${name}${separator}${value}" > "${file}"
-		if [ $? -ne 0 ]; then
-			Logger "File [${file}] does not exist. Failed to create it with value [$name]" "ERROR"
-		fi
+		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
 	fi
 }
 

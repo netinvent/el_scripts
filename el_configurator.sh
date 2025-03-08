@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025021401"
+SCRIPT_BUILD="2025030801"
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
@@ -161,6 +161,41 @@ check_internet() {
     log "resolv.conf content:\n${resolv}\n\n"
 
     return 1
+}
+
+set_conf_value() {
+    # Updates a line in a configuration file
+    # name=value if separator = '='
+    # name value if separator = ' '
+    # name = value if separator = ' = '
+	file="${1}"
+	name="${2}"
+	value="${3}"
+	separator="${4:-=}"
+    # sed separator needs to be updated if '#' is used in name, separator or value
+    sed_separator="${5:-#}"
+
+	if [ -f "$file" ]; then
+		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
+			# Using -i.tmp for BSD compat
+			sed -i.tmp "s${separator}^${name}${xzz}.*${separator}${name}${xzz}${value}${separator}" "${file}"
+			if [ $? -ne 0 ]; then
+				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
+			fi
+			rm -f "$file.tmp"
+			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
+		else
+			echo "${name}${separator}${value}" >> "${file}"
+			if [ $? -ne 0 ]; then
+				log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
+			fi
+		fi
+	else
+		echo "${name}${separator}${value}" > "${file}"
+		if [ $? -ne 0 ]; then
+			Logger "File [${file}] does not exist. Failed to create it with value [$name]" "ERROR"
+		fi
+	fi
 }
 
 ## Script entry point
@@ -493,7 +528,7 @@ EOF
     chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
     log "Setting up smart script for prometheus task"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" >> /etc/crontab
+    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cond.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
 
     # TODO Test this for Debian
     log "Setting up iTCO_wdt watchdog"
@@ -875,13 +910,13 @@ log "Setting up systemd watchdog"
 sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' /etc/systemd/system.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/system.conf" "ERROR"
 
 log "Setup cake qdisc algorith and bbr congestion control"
-echo net.core.default_qdisc=cake >> /etc/sysctl.d/99-sched.conf || log "Failed to write to /etc/sysctl.d/99-sched.conf" "ERROR"
-echo net.ipv4.tcp_congestion_control=bbr >> /etc/sysctl.d/99-sched.conf || log "Failed to write to /etc/sysctl.d/99-sched.conf" "ERROR"
+set_conf_value /etc/sysctl.d/99-sched.conf "net.core.default_qdisc" "cake"
+set_conf_value /etc/sysctl.d/99-sched.conf "net.ipv4.tcp_congestion_control" "bbr"
 
 # Add ClientAlive to SSHD
-echo "TCPKeepAlive no" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
-echo "ClientAliveInterval 120" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
-echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config || log "Failed to tune sshd service" "ERROR"
+set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
+set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
+set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
 
 if [ "${ALLOW_SUDO}" == true ]; then
     # Patch sudoers file since noexec is set by default, which prevents sudo

@@ -546,7 +546,7 @@ EOF
     chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
     log "Setting up smart script for prometheus task"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cond.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
 
     # TODO Test this for Debian
     log "Setting up iTCO_wdt watchdog"

@@ -28,6 +28,7 @@ MOTD_MSG=$(cat << 'EOF'
                  ||----w |
                  ||     ||
 ___MOTD_STATUS_DO_NOT_DELETE___
+
 EOF
 )
 

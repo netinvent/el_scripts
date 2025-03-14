@@ -10,25 +10,23 @@ BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 BRAND_VER=4.6
 
-MOTD_MSG=$(cat <<EOF
-  __________________________________________________
-/ UNAUTHORIZED ACCESS TO THIS DEVICE IS PROHIBITED  \\
-|     
+MOTD_MSG=$(cat << 'EOF'
+ ___________________________________________________
+/ UNAUTHORIZED ACCESS TO THIS DEVICE IS PROHIBITED  \
+|                                                   |
 | You must have explicit, authorized permission     |
 | to access or configure this device. Unauthorized  |
 | attempts and actions to access or use this system |
 | may result in civil and/or criminal penalties.    |
 | All activities performed on this device are       |
 | logged and monitored.                             |
-| this system                                       |
-\\                                                   /
-  --------------------------------------------------
+\                                                   /
+ ---------------------------------------------------
          \   ^__^ 
           \  (oo)\_______
-             (__)\       )\/\\
+             (__)\       )\/\
                  ||----w |
                  ||     ||
-
 ___MOTD_STATUS_DO_NOT_DELETE___
 EOF
 )
@@ -951,9 +949,9 @@ fi
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
-    MOTD_STATUS="EL POST SCRIPT: FAILURE"
+    MOTD_STATUS="___EL POST SCRIPT: FAILURE___"
 else
-    MOTD_STATUS="EL POST SCRIPT: SUCCESS"
+    MOTD_STATUS="___EL POST SCRIPT: SUCCESS___"
 fi
 echo "${MOTD_MSG}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
 sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"

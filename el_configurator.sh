@@ -303,6 +303,8 @@ if [ "${SCAP_PROFILE}" != false ]; then
         log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
         setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
     fi
+else
+    log "No SCAP profile selected. Skipping SCAP profile setup"
 fi
 
 # Don't fetch dnf epel packages since it's not sure we get internet
@@ -937,7 +939,8 @@ set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
 set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
 set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
 
-if [ "${ALLOW_SUDO}" == true ]; then
+if [ "${ALLOW_SUDO}" == true ] && [ "${SCAP_PROFILE}" != false ]; then
+    log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"
     # Patch sudoers file since noexec is set by default, which prevents sudo
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
     if [ "${FLAVOR}" = "rhel" ]; then
@@ -946,6 +949,8 @@ if [ "${ALLOW_SUDO}" == true ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     fi
+else
+    log "Not altering sudo behavior"
 fi
 
 # Setting up banner

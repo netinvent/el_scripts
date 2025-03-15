@@ -54,6 +54,7 @@ HOSTNAME = "machine.npf.local"
 # Network can be "dhcp" or a single network defining string in form ip:netmask:gateway:nameserver, ex
 # NETWORK = "10.20.30.1:255.255.255.0:10.20.30.254:1.1.1.1"
 # If nameserver is not given, we'll use gateway as nameserver
+# Multiple nameservers can be given as a comma separated string, eg 1.1.1.1,8.8.8.8
 NETWORK = "dhcp"
 
 # Please note that the following arguments can be superseded by kernel arguments
@@ -701,6 +702,12 @@ def setup_network(network: str) -> bool:
                 if gw:
                     network_string += f" --gateway {gw}"
                 if ns:
+                    if ',' in ns:
+                        ns = ns.split(',')
+                    else:
+                        ns = [ns]
+                    for ns_entry in ns:
+                        network_string += f" --nameserver {ns_entry}"
                     network_string += f" --nameserver {ns}"
                 network_string += " --activate --onboot=yes\n"
                 fp.write(network_string)

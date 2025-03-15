@@ -781,14 +781,14 @@ if DEV_MOCK:
 TARGET = TARGET.lower()
 DISK_PATH = get_first_disk_path()
 
-# Supersede 
+# Supersede settings
 kernel_arguments = get_kernel_arguments()
 for argument_name, argument_value in kernel_arguments.items():
     logger.info(f"Superseding value {argument_name}={argument_value}")
     # Special case when Superseding passwords
     if argument_name == "ROOT_PASSWORD":
         IS_ROOT_PASSWORD_CRYPTED = False
-    if argument_name == "USER_NAME":
+    if argument_name == "USER_PASSWORD":
         IS_USER_PASSWORD_CRYPTED = False
     globals()[argument_name] = argument_value
 

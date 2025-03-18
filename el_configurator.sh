@@ -4,7 +4,10 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025031501"
+SCRIPT_BUILD="2025031502"
+
+# Note that all variables can be overriden by kernel arguments
+# Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
@@ -71,6 +74,31 @@ log_quit() {
 
 log "Starting EL configurator post install build ${SCRIPT_BUILD} at $(date)"
 [ -z "${BASH_VERSION}" ] && log_quit "This script must be run with bash"
+
+
+get_kernel_arguments() {
+    # This allows to set variables from kernel arguments
+    # kernel argument NPF_VARIABLE_NAME=value sets VARIABLE_NAME with value
+
+    kernel_arg_prefix="NPF_"
+
+    if [ -f /proc/cmdline ]; then
+        KERNEL_ARGS=$(cat /proc/cmdline)
+        log "Current kernel arguments: ${KERNEL_ARGS}"
+        # Split kernel arguments
+        KERNEL_ARGS_SPLIT=(${KERNEL_ARGS// / })
+        for argument in "${KERNEL_ARGS_SPLIT[@]}"; do
+            if [ "${argument:0:${#kernel_arg_prefix}}" = "${kernel_arg_prefix}" ]; then
+                argument="${argument:${#kernel_arg_prefix}}"
+                argument_split=(${argument//=/ })
+                log "Retrieved variable from kernel arguments: ${argument_split[0]}=${argument_split[1]}"
+                eval ${argument_split[0]}="${argument_split[1]}"
+            fi
+        done
+    else
+        log "Cannot find kernel arguments from /proc/cmdline" "ERROR"
+    fi
+}
 
 # This is a duplicate from the Python script, but since we don't inherit pre settings, we need to redeclare it
 # Physical machine can return
@@ -220,6 +248,7 @@ set_conf_value() {
 ## Script entry point
 POST_INSTALL_SCRIPT_GOOD=true
 
+get_kernel_arguments
 get_el_version
 is_virtual
 

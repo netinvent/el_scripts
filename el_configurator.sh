@@ -44,12 +44,11 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
-# Configure serial terminal
-CONFIGURE_SERIAL_TERMINAL=true
-
 # By default, ANSSI profiles disable sudo (which is a good thing)
 ALLOW_SUDO=false
 
+# Configure serial terminal
+CONFIGURE_SERIAL_TERMINAL=true
 
 LOG_FILE=/root/.el-configurator.log
 

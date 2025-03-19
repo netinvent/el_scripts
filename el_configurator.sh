@@ -293,14 +293,14 @@ if [ "${SCAP_PROFILE}" != false ]; then
             if [ "${RELEASE}" = 12 ]; then
                 log "Downloading up ssg openscap data for debian 12"
                 if type curl > /dev/null 2>&1; then
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
                 else
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
                 fi
-                dpkg -i ssg-base_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
-                dpkg -i ssg-debian_0.1.74-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
+                dpkg -i ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
+                dpkg -i ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
             fi
             apt install -y openscap-utils  2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         else
@@ -333,6 +333,10 @@ if [ "${SCAP_PROFILE}" != false ]; then
     if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
         log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
         setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
+    elif [ "${SCAP_PROFILE}" != false ] && [ "${FLAVOR}" = "debian" ]; then
+        log "Installing additional policycoreutils-python-utils required for audit2why SELinux on ${FLAVOR}"
+        apt install -y policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
+
     fi
 else
     log "No SCAP profile selected. Skipping SCAP profile setup"
@@ -348,8 +352,6 @@ if [ $? -eq 0 ]; then
         dnf install -4 -y htop atop nmon iftop iptraf tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y htop atop nmon iftop iptraf-ng tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
-        # Required for audit2why SELinux when enabling SELinux on Debian
-        # apt install -y dnf install -y policycoreutils-python-util 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
     fi
 else
     log "No epel available without internet. Didn't install additional packages."

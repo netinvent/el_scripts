@@ -47,6 +47,9 @@ SCAP_PROFILE=anssi_bp28_high
 # By default, ANSSI profiles disable sudo (which is a good thing)
 ALLOW_SUDO=false
 
+# Setup SELinux on Debian
+SETUP_SELINUX_DEBIAN=false
+
 # Configure serial terminal
 CONFIGURE_SERIAL_TERMINAL=true
 
@@ -333,13 +336,18 @@ if [ "${SCAP_PROFILE}" != false ]; then
     if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
         log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
         setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
-    elif [ "${SCAP_PROFILE}" != false ] && [ "${FLAVOR}" = "debian" ]; then
-        log "Installing additional policycoreutils-python-utils required for audit2why SELinux on ${FLAVOR}"
-        apt install -y policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
-
     fi
 else
     log "No SCAP profile selected. Skipping SCAP profile setup"
+fi
+
+if [ "${SETUP_SELINUX_DEBIAN}" != false ] && [ "${FLAVOR}" = "debian" ]; then
+    log "Setting up SELinux on ${FLAVOR}"
+    apt install -y selinux-basics selinux-policy-default auditd policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
+    log "Activating SELinux"
+    selinux-activate 2>> "${LOG_FILE}" || log "Failed to activate SELinux" "ERROR"
+    log "Setting up SELinux to enforcing"
+    selinux-config-enforcing 2>> "${LOG_FILE}" || log "Failed to set SELinux to enforcing" "ERROR"
 fi
 
 # Don't fetch dnf epel packages since it's not sure we get internet

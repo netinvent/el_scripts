@@ -84,14 +84,17 @@ get_kernel_arguments() {
     if [ -f /proc/cmdline ]; then
         KERNEL_ARGS=$(cat /proc/cmdline)
         log "Current kernel arguments: ${KERNEL_ARGS}"
-        # Split kernel arguments
+        # Split kernel arguments. We want word splitting here, so no to shellcheck SC2206
+        # shellcheck disable=SC2206
         KERNEL_ARGS_SPLIT=(${KERNEL_ARGS// / })
         for argument in "${KERNEL_ARGS_SPLIT[@]}"; do
             if [ "${argument:0:${#kernel_arg_prefix}}" = "${kernel_arg_prefix}" ]; then
                 argument="${argument:${#kernel_arg_prefix}}"
+                # No need to check SC2206 here neither
+                # shellcheck disable=SC2206
                 argument_split=(${argument//=/ })
                 log "Retrieved variable from kernel arguments: ${argument_split[0]}=${argument_split[1]}"
-                eval ${argument_split[0]}="${argument_split[1]}"
+                eval "${argument_split[0]}=${argument_split[1]}"
             fi
         done
     else

@@ -55,6 +55,9 @@ The `el_configurator` script will also provide the following setups:
 - Cleanup of image after setup
 
 
+All variables in `el_configurator` script can be overridden by kernel arguments that have the `NPF_` prefix. 
+Example, in order to override `SCAP_PROFILE` variable, set the following kernel argument: `NPF_SCAP_PROFILE=myvalue`
+
 ### RHEL specific Kickstart file
 
 The kickstart file contains a python script which handles automagic partitioning and other small adjustemnts as pre script, and a machine setup script as post script, that will install additions and configure the system.  

@@ -6,7 +6,7 @@
 
 SCRIPT_BUILD="2025031502"
 
-# Note that all variables can be overriden by kernel arguments
+# Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue

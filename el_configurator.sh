@@ -776,7 +776,7 @@ else
     log "This is a virtual machine. We will not setup hardware tooling"
 fi
 
-if [ "${CONFIGURE_SERIAL_TERMINAL}" == true ]; then
+if [ "${CONFIGURE_SERIAL_TERMINAL}" = true ]; then
     # Configure serial console
     log "Setting up serial console"
     systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
@@ -900,12 +900,12 @@ fi
 # Install fail2ban
 if [ "${SETUP_FAIL2BAN}" != false ]; then
     log "Setting up fail2ban"
-    if [ "${FLAVOR}" == "rhel" ]; then
+    if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
         # On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
-        if [ "${RELEASE}" == 12 ]; then
+        if [ "${RELEASE}" = 12 ]; then
             sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
         fi
     fi
@@ -980,7 +980,7 @@ set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
 set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
 set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
 
-if [ "${ALLOW_SUDO}" == true ] && [ "${SCAP_PROFILE}" != false ]; then
+if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"
     # Patch sudoers file since noexec is set by default, which prevents sudo
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"

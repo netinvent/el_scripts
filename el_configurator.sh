@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025031502"
+SCRIPT_BUILD="2025032001"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -357,7 +357,7 @@ if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
         dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
-        dnf install -4 -y htop atop nmon iftop iptraf tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        dnf install -4 -y htop atop nmon iftop iptraf tuned tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y htop atop nmon iftop iptraf-ng tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
     fi
@@ -861,7 +861,6 @@ journalctl --vacuum-size=2G 2>> "${LOG_FILE}" || log "Failed to set journald vac
 
 if [ "${FLAVOR}" = "rhel" ]; then
     log "Setup DNF automatic except for updates that require reboot"
-    systemctl disable dnf-makecache.timer 2>> "${LOG_FILE}" || log "Failed to disable dnf cache timer" "ERROR"
     sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
     sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
     sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"

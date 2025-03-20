@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2024111401 for RHEL9
+## Hypervisor Installer 2025032001 for RHEL9
 
 # Requirements:
 # RHEL9 installed with NPF VMv4 profile incl. node exporter
@@ -8,6 +8,9 @@
 
 # optional, setup_hypervisor.conf file with variable overrides
 [ -f ./setup_hypervisor.conf ] && source ./setup_hypervisor.conf
+
+# Setup bridge for first ethernet interface
+[ -z "${SETUP_BRIDGE}" ] && SETUP_BRIDGE=true
 
 # COCKPIT ALLOWED USER
 [ -z "${ADMIN_USER}" ] && ADMIN_USER=myuser
@@ -120,19 +123,21 @@ systemctl start cockpit.socket || log "Failed to start cockpit" "ERROR"
 sed -i 's/^root/#root/g' /etc/cockpit/disallowed-users 2>> "${LOG_FILE}" || log "Allowing root user for cockpit failed" "ERROR"
 
 
-echo "#### Setup first ethernet interface as bridged to new bridge kvmbr0 ####"
-# ip -br l == ip print brief list of network interfaces
-iface=$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1; exit }')
-if [ -z "${iface}" ]; then
-    log_quit "Failed to get first ethernet interface" "ERROR"
-fi
+if [ "${SETUP_BRIDGE}" != false ]; then
+    log "#### Setup first ethernet interface as bridged to new bridge kvmbr0 ####"
+    # ip -br l == ip print brief list of network interfaces
+    iface=$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1; exit }')
+    if [ -z "${iface}" ]; then
+        log_quit "Failed to get first ethernet interface" "ERROR"
+    fi
 
-# Disable spanning tree so we don't interrupt existing STP infrastructure
-nmcli c add type bridge ifname kvmbr0 con-name kvmbr0 autoconnect yes bridge.stp no 2>> "${LOG_FILE}" || log "Creating bridge failed" "ERROR"
-nmcli c modify kvmbr0 ipv4.method auto 2>> "${LOG_FILE}" || log "Setting bridge ipv4 DHCP failed" "ERROR"
-nmcli c add type bridge-slave ifname "${iface}" master kvmbr0 autoconnect yes 2>> "${LOG_FILE}" || log "Adding bridge slave failed" "ERROR"
-nmcli c up kvmbr0  2>> "${LOG_FILE}" || log "Enabling bridge failed" "ERROR"
-nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
+    # Disable spanning tree so we don't interrupt existing STP infrastructure
+    nmcli c add type bridge ifname kvmbr0 con-name kvmbr0 autoconnect yes bridge.stp no 2>> "${LOG_FILE}" || log "Creating bridge failed" "ERROR"
+    nmcli c modify kvmbr0 ipv4.method auto 2>> "${LOG_FILE}" || log "Setting bridge ipv4 DHCP failed" "ERROR"
+    nmcli c add type bridge-slave ifname "${iface}" master kvmbr0 autoconnect yes 2>> "${LOG_FILE}" || log "Adding bridge slave failed" "ERROR"
+    nmcli c up kvmbr0  2>> "${LOG_FILE}" || log "Enabling bridge failed" "ERROR"
+    nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
+fi
 
 echo "#### Setting up virtualization ####"
 cat << 'EOF' > /etc/sysconfig/libvirt-guests

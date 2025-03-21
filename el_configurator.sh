@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025032001"
+SCRIPT_BUILD="2025032101"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -222,7 +222,7 @@ check_internet() {
 
 set_conf_value() {
     # Updates a line in a configuration file
-    # name=value if separator = '='
+    # name=value or name    =   value (gets rewritten to name=value) if separator = '='
     # name value if separator = ' '
     # name = value if separator = ' = '
 	file="${1}"
@@ -235,7 +235,7 @@ set_conf_value() {
 	if [ -f "$file" ]; then
 		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
 			# Using -i.tmp for BSD compat
-			sed -i.eltmp "s${separator}^${name}${sed_separator}.*${separator}${name}${sed_separator}${value}${separator}" "${file}"
+			sed -i.eltmp "s${separator}^${name}(\s*)${sed_separator}(\s*).*${separator}${name}${sed_separator}${value}${separator}" "${file}"
 			if [ $? -ne 0 ]; then
 				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
 			fi

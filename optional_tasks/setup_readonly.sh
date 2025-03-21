@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2025021901 for RHEL9
+## Readonly setup script 2025032101 for RHEL9
 
 # Requirements:
 # RHEL9 installed
 
 LOG_FILE=/root/.npf-readonly.log
 SCRIPT_GOOD=true
+
+target="${1:-false}"
 
 function log {
     local log_line="${1}"
@@ -29,7 +31,36 @@ function log_quit {
     exit 1
 }
 
-target="${1:-false}"
+set_conf_value() {
+    # Updates a line in a configuration file
+    # name=value or name    =   value (gets rewritten to name=value) if separator = '='
+    # name value if separator = ' '
+    # name = value if separator = ' = '
+	file="${1}"
+	name="${2}"
+	value="${3}"
+	separator="${4:-=}"
+    # sed separator needs to be updated if '#' is used in name, separator or value
+    sed_separator="${5:-#}"
+
+	if [ -f "$file" ]; then
+		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
+			# Using -i.tmp for BSD compat
+			sed -i.eltmp "s${separator}^${name}(\s*)${sed_separator}(\s*).*${separator}${name}${sed_separator}${value}${separator}" "${file}"
+			if [ $? -ne 0 ]; then
+				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
+			fi
+            # Remove temp file if exists
+			rm -f "$file.eltmp" > /dev/null 2>&1
+			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
+		else
+			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
+		fi
+	else
+		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
+	fi
+}
+
 
 if [ "${target}" != "ztl" ] && [ "${target}" != "hv" ]; then
     log_quit "Target needs to be ztl or hv"
@@ -45,11 +76,11 @@ echo "#### Setting up readonly root ####"
 systemctl disable man-db-restart-cache-update.service 2>> "${LOG_FILE}" || log "Cannot disable man-db-restart-cache-update.service" "ERROR"
 
 # Enable readonly root
-sed -i 's/READONLY=no/READONLY=yes/g' /etc/sysconfig/readonly-root  2>> "${LOG_FILE}" || log "Cannot enable readonly-root" "ERROR"
+set_conf_value /etc/sysconfig/readonly-root READONLY yes
 
 # Change default label of stateful partition to something less than 15 chars so XFS can hold that label
 # Those should already be set by the VMv4 kickstart file
-sed -i 's/STATE_LABEL=stateless-state/STATE_LABEL=STATEFULRW/g' /etc/sysconfig/readonly-root  2>> "${LOG_FILE}" || log "Cannot change stateful label" "ERROR"
+set_conf_vlaue etc/sysconfig/readonly-root STATE_LABEL STATEFULRW
 
 rm -f /etc/statetab.d/{snmp,nm,qemu,cockpit,rsyslog,prometheus,node_exporter,ztl} > /dev/null 2>&1
 rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1
@@ -59,27 +90,27 @@ rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1
 # Keep in mind we need to label a partition with
 # xfs_admnin -L STATEFULRW /dev/disk/by-uuid/{some_uuid}
 # find uuid with lsblk -f
-echo "/etc/snmp" >> /etc/statetab.d/snmp || log "Cannot create /etc/statetab.d/snmp" "ERROR"
-echo "/etc/NetworkManager/system-connections" >> /etc/statetab.d/nm || log "Cannot create /etc/statetab.d/nm" "ERROR"
-echo "/etc/prometheus" >> /etc/statetab.d/prometheus || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
-echo "/var/lib/prometheus" >> /etc/statetab.d/prometheus || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
-echo "/var/lib/node_exporter"  >> /etc/statetab.d/node_exporter || log "Cannot create /etc/statetab.d/node_exporter" "ERROR"
-echo "/var/lib/rsyslog" >> /etc/statetab.d/rsyslog || log "Cannot create /etc/statetab.d/rsyslog" "ERROR"
+echo "/etc/snmp" >> /etc/statetab.d/snmp 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/snmp" "ERROR"
+echo "/etc/NetworkManager/system-connections" >> /etc/statetab.d/nm 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/nm" "ERROR"
+echo "/etc/prometheus" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
+echo "/var/lib/prometheus" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
+echo "/var/lib/node_exporter"  >> /etc/statetab.d/node_exporter 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/node_exporter" "ERROR"
+echo "/var/lib/rsyslog" >> /etc/statetab.d/rsyslog 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/rsyslog" "ERROR"
 # cockpit
-echo "/var/lib/pcp" >> /etc/statetab.d/cockpit || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
-echo "/etc/pcp" >> /etc/statetab.d/cockpit || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
+echo "/var/lib/pcp" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
+echo "/etc/pcp" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
 # dnf cache
-echo "/var/lib/dnf" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d/dnf" "ERROR"
+echo "/var/lib/dnf" >> /etc/statetab.d/dnf 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/dnf" "ERROR"
 # For DNF to work we'd need /var/cache/dnf but obviously /var/cache overrides this
-echo "/var/cache" >> /etc/statetab.d/dnf || log "Cannot create /etc/statetab.d/dnf" "ERROR"
-echo "/var/lib/kdump" >> /etc/statetab.d/kdump || log "Cannot create /etc/statetab.d/kdump" "ERROR"
+echo "/var/cache" >> /etc/statetab.d/dnf 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/dnf" "ERROR"
+echo "/var/lib/kdump" >> /etc/statetab.d/kdump 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/kdump" "ERROR"
 # TPM
-echo "/var/lib/tpm2-tss" >> /etc/statetab.d/tpm || log "Cannot create /etc/statetab.d/tpm" "ERROR" 
+echo "/var/lib/tpm2-tss" >> /etc/statetab.d/tpm 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/tpm" "ERROR" 
 
 
 if [ "${target}" == "hv" ]; then
     log "Configuring specific HV stateless settings"
-    echo "Configuring specific HV Stateless" || log "Cannot configure HV stateless" "ERROR"
+    echo "Configuring specific HV Stateless" 2>> "${LOG_FILE}" || log "Cannot configure HV stateless" "ERROR"
 
     # Don't put images into /var/lib/libvirt/images since it will be mounted as stateless partition
     # so if there were to be disk images, stateless partition would fill
@@ -91,31 +122,32 @@ if [ "${target}" == "hv" ]; then
     # /var/lib/libvirt/network
     # /etc/libvirt
 
-    echo "/var/lib/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
-    echo "/etc/libvirt" >> /etc/statetab.d/qemu || log "Cannot create /etc/statetab.d/qemu" "ERROR"
+    echo "/var/lib/libvirt" >> /etc/statetab.d/qemu 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/qemu" "ERROR"
+    echo "/etc/libvirt" >> /etc/statetab.d/qemu 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/qemu" "ERROR"
     
-    # Move default pool to data
+    # Move default pool to data so we don't 
     mkdir /data
-    sed -i 's#/var/lib/libvirt/images#/data#g' /etc/libvirt/storage/images.xml
+    sed -i 's#/var/lib/libvirt/images#/data#g' /etc/libvirt/storage/default.xml 2>> "${LOG_FILE}" || log "Cannot change /var/lib/libvirt/images to /data in images.xml" "ERROR"
+    semanage fcontext -a -t virt_image_t "/data(/.*)?" 2>> "${LOG_FILE}" || log "Cannot set virt_image_t on /data" "ERROR"
 fi
 
 # Keep logs persistent too
-echo "/var/log" > /etc/statetab.d/log || log "Cannot create /etc/statetab.d/log" "ERROR"
+echo "/var/log" > /etc/statetab.d/log 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/log" "ERROR"
 sed -i 's:dirs\(.*\)/var/log:#/dirs\1/var/log # Configured in /etc/statetab to be persistent:g' /etc/rwtab 2>> "${LOG_FILE}" || log "Cannot comment out /var/log in /etc/rwtab" "ERROR"
 
 # Those dirs are stateful until reboot
 # Size is 1/2 of system RAM
-echo "dirs /var/log/tuned" >> /etc/rwtab.d/tuned || log "Cannot create /etc/rwtab.d/tuned" "ERROR"
-echo "files /etc/issue" >> /etc/rwtab.d/issue || log "Cannot create /etc/rwtab.d/issue" "ERROR"
+echo "dirs /var/log/tuned" >> /etc/rwtab.d/tuned 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/tuned" "ERROR"
+echo "files /etc/issue" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
 
 if [ "${target}" == "ztl" ]; then
     log "Configuring specific ZTL stateless settings"
-    echo "dirs /etc/wireguard" >> /etc/rwtab.d/ztl || log "Cannot create /etc/rwtab.d/ztl" "ERROR"
-    echo "dirs /var/lib/haproxy" >> /etc/rwtab.d/haproxy || log "Cannot create /etc/rwtab.d/haproxy" "ERROR"
-    echo "/etc/firewalld/zones" >> /etc/statetab.d/ztl || log "Cannot create /etc/statetab.d/ztl" "ERROR"
-    echo "/var/ztl" >> /etc/statetab.d/ztl || log "Cannot create /etc/statetab.d/ztl" "ERROR"
-    echo "/etc/systemd/system" >> /etc/statetab.d/ztl || log "Cannot create /etc/statetab.d/ztl" "ERROR"
-    echo "dirs /var/ztl_upgrade" >> /etc/rwtab.d/ztl || log "Cannot create /etc/rwtab.d/ztl" "ERROR"
+    echo "dirs /etc/wireguard" >> /etc/rwtab.d/ztl 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/ztl" "ERROR"
+    echo "dirs /var/lib/haproxy" >> /etc/rwtab.d/haproxy 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/haproxy" "ERROR"
+    echo "/etc/firewalld/zones" >> /etc/statetab.d/ztl 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/ztl" "ERROR"
+    echo "/var/ztl" >> /etc/statetab.d/ztl 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/ztl" "ERROR"
+    echo "/etc/systemd/system" >> /etc/statetab.d/ztl 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/ztl" "ERROR"
+    echo "dirs /var/ztl_upgrade" >> /etc/rwtab.d/ztl 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/ztl" "ERROR"
 fi
 
 # Optional for xauth support
@@ -125,9 +157,9 @@ fi
 
 
 # Update grub to add ro and remove rw
-grubby --update-kernel=ALL --args="ro" || log "Cannot update kernel to ro" "ERROR"
-grubby --update-kernel=ALL --remove-args="rw" || log "Cannot remove rw from kernel" "ERROR"
-grub2-mkconfig -o /boot/grub2/grub.cfg || log "Cannot update grub.cfg" "ERROR"
+grubby --update-kernel=ALL --args="ro" 2>> "${LOG_FILE}" || log "Cannot update kernel to ro" "ERROR"
+grubby --update-kernel=ALL --remove-args="rw" 2>> "${LOG_FILE}" || log "Cannot remove rw from kernel" "ERROR"
+grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "Cannot update grub.cfg" "ERROR"
 
 # Make sure we mount any xfs filesystems as ro (/boot and /)
 # This won't affect the stateful label mounted devices
@@ -144,7 +176,7 @@ grub2-mkconfig -o /boot/grub2/grub.cfg || log "Cannot update grub.cfg" "ERROR"
     if ($2 != "/" && $4 !~ "nodev") { $4=$4",nodev" };                              # Add nodev to all except /
     if ($4 !~ "ro|rw") { $4=$4",ro" };                                              # Update any rw instance to ro
     sub("rw","ro"); print $0
-}' /etc/fstab || log "Cannot update /etc/fstab" "ERROR"
+}' /etc/fstab 2>> "${LOG_FILE}" || log "Cannot update /etc/fstab" "ERROR"
 #sed -i 's/xfs\(\s*\)defaults/xfs\1defaults,ro/g' /etc/fstab
 # Also remount all vfat systems (/boot/efi) if exist as ro
 #sed -i 's/vfat\(\s*\)/vfat\1ro,/g' /etc/fstab
@@ -202,9 +234,9 @@ fi
 # Remove /etc/resolv.conf file since we don't want it in our image
 # See man NetworkManager.conf rc-manager for more info about this
 if [ -f /etc/resolv.conf ]; then
-    rm -f /etc/resolv.conf || log "Cannot remove /etc/resolv.conf" "ERROR"
+    rm -f /etc/resolv.conf 2>> "${LOG_FILE}" || log "Cannot remove /etc/resolv.conf" "ERROR"
 fi
-ln -s /run/NetworkManager/resolv.conf /etc/resolv.conf || log "Cannot link /run/NetworkManager/resolv.conf to /etc/resolv.conf" "ERROR"
+ln -s /run/NetworkManager/resolv.conf /etc/resolv.conf 2>> "${LOG_FILE}" || log "Cannot link /run/NetworkManager/resolv.conf to /etc/resolv.conf" "ERROR"
 
 
 if [ "${SCRIPT_GOOD}" == false ]; then

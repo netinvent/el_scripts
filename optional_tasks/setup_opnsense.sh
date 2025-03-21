@@ -73,7 +73,7 @@ if [ ! -d "${IMAGE_DIR}" ]; then
     log_quit "Image dir ${IMAGE_DIR} does not exist. Are we on a KVM machine ?"
 fi
 
-cd "${IMAGE_DIR}" || log_quit "Cannot cd to ${IMAGE_DIR}"
+cd "${IMAGE_DIR}" 2>> "${LOG_FILE}" || log_quit "Cannot cd to ${IMAGE_DIR}"
 log "Downloading OPNsense image"
 aria2c "https://mirror.ams1.nl.leaseweb.net/opnsense/releases/$2/OPNsense-$2-dvd-amd64.iso.bz2"
 if [ $? -ne 0 ]; then
@@ -121,8 +121,8 @@ for host_device in "${host_devices[@]}"; do
     PCI_PASSTHROUGH="${PCI_PASSTHROUGH} --host-device ${host_device}"
 done
 
-qemu-img create -f qcow2 -o extended_l2=on -o preallocation=metadata "${FULL_DISKPATH}" "${DISK_SIZE}" || log_quit "Failed to create disk"
-chown qemu:qemu "${FULL_DISKPATH}" || log "Failed to change disk owner" "ERROR"
+qemu-img create -f qcow2 -o extended_l2=on -o preallocation=metadata "${FULL_DISKPATH}" "${DISK_SIZE}" 2>> "${LOG_FILE}" || log_quit "Failed to create disk"
+chown qemu:qemu "${FULL_DISKPATH}" 2>> "${LOG_FILE}" || log "Failed to change disk owner" "ERROR"
 virt-install --name "${VM}" --ram "${RAM}" --vcpus "${VCPUS}" --cpu host --os-variant "${OS_VARIANT}" --disk path="${FULL_DISKPATH},bus=virtio,cache=none${IO_MODE}" --channel unix,mode=bind,target_type=virtio,name=org.qemu.guest_agent.0 --watchdog i6300esb,action=reset --sound none --boot hd --autostart --sysinfo smbios,bios.vendor=npf --sysinfo smbios,system.manufacturer=NetPerfect --sysinfo smbios,system.product="${PRODUCT}" --cdrom "${ISO}" --graphics vnc,listen=127.0.0.1,keymap=fr --autoconsole text "${PCI_PASSTHROUGH}"
 [ $? -ne 0 ] && log "Failed to launch virt-install" "ERROR"
 

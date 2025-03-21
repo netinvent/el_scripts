@@ -34,15 +34,15 @@ function log_quit {
     exit 1
 }
 
-cd /opt || log_quit "Cannot change to /opt"
+cd /opt 2>> "${LOG_FILE}" || log_quit "Cannot change to /opt"
 curl --output service.tar "${SIMPLEHELP_URL}" || log_quit "Cannot download service.tar"
-tar -xf service.tar || log_quit "Cannot extract service.tar"
+tar -xf service.tar 2>> "${LOG_FILE}" || log_quit "Cannot extract service.tar"
 ./Remote\ Access-linux64-offline /S /NAME=AUTODETECT /HOST="${HOST}"
 shred -vzu service.tar Remote\ Access-linux64-offline || log "Cannot shred service.tar or Remote Access-linux64-offline" "ERROR"
 # Arbitrary time to wait for Simplehelp service to start properly
 sleep 10
 
-echo "/opt/JWrapper-Remote Access" > /etc/statetab.d/simplehelp || log "Cannot create /etc/statetab.d/simplehelp" "ERROR"
+echo "/opt/JWrapper-Remote Access" > /etc/statetab.d/simplehelp 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/simplehelp" "ERROR"
 
 # Fix for simplehelp stopping because of systemd
 sed -i '/^ExecStart=.*/a RemainAfterExit=true\nRestartSec=300\nRestart=always' /etc/systemd/system/simplegateway.service 2>> "${LOG_FILE}" || log "Cannot reconfigure simplegateway.service" "ERROR"

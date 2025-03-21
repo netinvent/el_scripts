@@ -58,34 +58,63 @@ function log_quit {
     exit 1
 }
 
-echo "#### Installing prerequisites ####"
+set_conf_value() {
+    # Updates a line in a configuration file
+    # name=value or name    =   value (gets rewritten to name=value) if separator = '='
+    # name value if separator = ' '
+    # name = value if separator = ' = '
+	file="${1}"
+	name="${2}"
+	value="${3}"
+	separator="${4:-=}"
+    # sed separator needs to be updated if '#' is used in name, separator or value
+    sed_separator="${5:-#}"
 
-dnf install -y epel-release || log "Failed to install epel release" "ERROR"
-dnf install -y policycoreutils-python-utils || log "Failed to install selinux tools" "ERROR"
-dnf install -y virt-what tar bzip2 || log "Failed to install system tools" "ERROR"
-dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines cockpit-pcp || log "Failed to install KVM" "ERROR"
+	if [ -f "$file" ]; then
+		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
+			# Using -i.tmp for BSD compat
+			sed -i.eltmp "s${separator}^${name}(\s*)${sed_separator}(\s*).*${separator}${name}${sed_separator}${value}${separator}" "${file}"
+			if [ $? -ne 0 ]; then
+				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
+			fi
+            # Remove temp file if exists
+			rm -f "$file.eltmp" > /dev/null 2>&1
+			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
+		else
+			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
+		fi
+	else
+		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
+	fi
+}
+
+log "#### Installing prerequisites ####"
+
+dnf install -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel release" "ERROR"
+dnf install -y policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
+dnf install -y virt-what tar bzip2 2>> "${LOG_FILE}" || log "Failed to install system tools" "ERROR"
+dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install KVM" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
-dnf install -y virt-manager xorg-x11-xauth || log "Failed to install virt-manager and X11 auth support" "ERROR"
+dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"
 
-echo "#### System tuning ####"
+log "#### System tuning ####"
 # Don't log martian packets, obviously we'll get plenty
 # These are RHEL specific with ANSSI BP028 high profile
-sysctl -w net.ipv4.conf.all.log_martians=0 || log "Cannot set net.ipv4.conf.all.log_martians=0 live" "ERROR"
-# THis is a link
-#sed -i 's/net.ipv4.conf.all.log_martians = 1/net.ipv4.conf.all.log_martians = 0/g' /etc/sysctl.d/99-sysctl.conf
-sed -i 's/net.ipv4.conf.all.log_martians = 1/net.ipv4.conf.all.log_martians = 0/g' /etc/sysctl.conf || log "Cannot update /etc/sysctl.conf" "ERROR"
+sysctl -w net.ipv4.conf.all.log_martians=0 2>> "${LOG_FILE}" || log "Cannot set net.ipv4.conf.all.log_martians=0 live" "ERROR"
+# /etc/sysctl.d/99-sysctl.conf is is a symlink to /etc/sysctl.conf in EL9
+set_conf_value /etc/sysctl.conf "net.ipv4.conf.all.log_martians" "0"
 
-echo "#### Setting up system certificate ####"
+log "#### Setting up system certificate ####"
 
 [ ! -d "${TARGET_DIR}" ] && mkdir "${TARGET_DIR}"
 
-openssl req -nodes -new -x509 -days 7300 -newkey rsa:4096 -keyout "${CERT_DIR}/private/${COMMON_NAME// /_}.key" -subj "${CRT_SUBJECT}" -out "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt"  || log "Failed to generate local cert" "ERROR"
-cat "${CERT_DIR}/private/${COMMON_NAME// /_}.key" "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt" > "${TARGET_DIR}/${COMMON_NAME// /_}.pem" || log "Failed to concat local cert" "ERROR"
+openssl req -nodes -new -x509 -days 7300 -newkey rsa:4096 -keyout "${CERT_DIR}/private/${COMMON_NAME// /_}.key" -subj "${CRT_SUBJECT}" -out "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt"  2>> "${LOG_FILE}" || log "Failed to generate local cert" "ERROR"
+cat "${CERT_DIR}/private/${COMMON_NAME// /_}.key" "${CERT_DIR}/certs/${COMMON_NAME// /_}.crt" > "${TARGET_DIR}/${COMMON_NAME// /_}.pem" 2>> "${LOG_FILE}" || log "Failed to concat local cert" "ERROR"
 
 if [ "${SETUP_SNMP}" == true ]; then
-    echo "#### Setup SNMP ####"
-    dnf install -y net-snmp net-snmp-utils || log "Failed to install SNMP" "ERROR"
+    log "#### Setup SNMP ####"
+    dnf install -y net-snmp net-snmp-utils 2>> "${LOG_FILE}" || log "Failed to install SNMP" "ERROR"
     cat << 'EOF' > /tmp/snmpd_part.conf
 # View all tree in default systemview
 view    systemview    included   .1
@@ -100,18 +129,18 @@ view   systemview    included   .1.3.6.1.4.1.2021.9
 # CPU
 view    systemview    included   .1.3.6.1.4.1.2021.10
 EOF
-    [ $? -eq 0 ] || log "Failed to create /tmp/snmpd_part.conf" "ERROR"
+    [ $? -eq 0 ] 2>> "${LOG_FILE}" || log "Failed to create /tmp/snmpd_part.conf" "ERROR"
 
     sed -i '/^view    systemview    included   .1.3.6.1.2.1.25.1.1$/ r /tmp/snmpd_part.conf' /etc/snmp/snmpd.conf 2>> "${LOG_FILE}" || log "Configuring SNMP failed" "ERROR"
 fi
 
-echo "#### Setting up cockpit & performance logging ####"
-systemctl enable pmcd || log "Failed to enable pmcd" "ERROR"
-systemctl start pmcd || log "Failed to start pmcd" "ERROR"
-systemctl enable pmlogger || log "Failed enable pmlogger" "ERROR"
-systemctl start pmlogger || log "Failed start pmlogger" "ERROR"
-systemctl enable cockpit.socket || log "Failed to enable cockpit" "ERROR"
-systemctl start cockpit.socket || log "Failed to start cockpit" "ERROR"
+log "#### Setting up cockpit & performance logging ####"
+systemctl enable pmcd 2>> "${LOG_FILE}" || log "Failed to enable pmcd" "ERROR"
+systemctl start pmcd 2>> "${LOG_FILE}" || log "Failed to start pmcd" "ERROR"
+systemctl enable pmlogger 2>> "${LOG_FILE}" || log "Failed enable pmlogger" "ERROR"
+systemctl start pmlogger 2>> "${LOG_FILE}" || log "Failed start pmlogger" "ERROR"
+systemctl enable cockpit.socket 2>> "${LOG_FILE}" || log "Failed to enable cockpit" "ERROR"
+systemctl start cockpit.socket 2>> "${LOG_FILE}" || log "Failed to start cockpit" "ERROR"
 
 
 # Actually, we won't allow sudo since ANSSI BP-028 prohibits it (using Defaults noexec in /etc/sudoers)
@@ -139,7 +168,7 @@ if [ "${SETUP_BRIDGE}" != false ]; then
     nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
 fi
 
-echo "#### Setting up virtualization ####"
+log "#### Setting up virtualization ####"
 cat << 'EOF' > /etc/sysconfig/libvirt-guests
 ON_BOOT=start
 ON_SHUTDOWN=shutdown
@@ -147,20 +176,20 @@ PARALLEL_SHUTDOWN=2
 SHUTDOWN_TIMEOUT=360
 SYNC_TIME=1
 EOF
-[ $? -eq 0 ] || log "Failed to create /etc/sysconfig/libvirt-guests" "ERROR"
+[ $? -eq 0 ] 2>> "${LOG_FILE}" || log "Failed to create /etc/sysconfig/libvirt-guests" "ERROR"
 
-systemctl enable libvirtd || log "Failed to enable libvirtd" "ERROR"
-systemctl start libvirtd || log "Failed to enable libvirtd" "ERROR"
-systemctl enable libvirt-guests || log "Failed to enable libvirt-guests" "ERROR"
-systemctl start libvirt-guests || log "Failed to start libvirt-guests" "ERROR"
-
-
-echo "#### Setup PCI Passthrough ####"
-grubby --update-kernel=ALL --args="intel_iommu=on" || log "Failed to add iommu kernel argument" "ERROR"
-grub2-mkconfig -o /boot/grub2/grub.cfg || log "Failed to generate grub.cfg" "ERROR"
+systemctl enable libvirtd 2>> "${LOG_FILE}" || log "Failed to enable libvirtd" "ERROR"
+systemctl start libvirtd 2>> "${LOG_FILE}" || log "Failed to enable libvirtd" "ERROR"
+systemctl enable libvirt-guests 2>> "${LOG_FILE}" || log "Failed to enable libvirt-guests" "ERROR"
+systemctl start libvirt-guests 2>> "${LOG_FILE}" || log "Failed to start libvirt-guests" "ERROR"
 
 
-echo "#### Identifying system ####"
+log "#### Setup PCI Passthrough ####"
+grubby --update-kernel=ALL --args="intel_iommu=on" 2>> "${LOG_FILE}" || log "Failed to add iommu kernel argument" "ERROR"
+grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "Failed to generate grub.cfg" "ERROR"
+
+
+log "#### Identifying system ####"
 
 host=$(virt-what)
 
@@ -183,13 +212,13 @@ case "$host" in
         ;;
 esac
 
-echo "NPF-${NPFSYSTEM}" > /etc/netperfect-release || log "Failed to create /etc/netperfect-release" "ERROR"
+echo "NPF-${NPFSYSTEM}" > /etc/netperfect-release 2>> "${LOG_FILE}" || log "Failed to create /etc/netperfect-release" "ERROR"
 
 ## Disable sssd
-systemctl disable sssd || log "Cannot disable sssd" "ERROR"
+systemctl disable sssd 2>> "${LOG_FILE}" || log "Cannot disable sssd" "ERROR"
 
 
-echo "#### Cleanup system files ####"
+log "#### Cleanup system files ####"
 ## Clean system so readonly will be clean
 # Need to be done before installing the appliance so we can keep logs
 
@@ -206,10 +235,10 @@ echo "#### Cleanup system files ####"
 #/bin/rm -rf /var/log/anaconda
 
 if [ "${SCRIPT_GOOD}" == false ]; then
-    echo "#### WARNING Installation FAILED ####"
+    log "#### WARNING Installation FAILED ####"
     exit 1
 else
-    echo "#### Installation done (check logs) ####"
+    log "#### Installation done (check logs) ####"
     echo "Don't forget to remove this file if it was on disk"
     echo "Then reboot this machine"
     exit 0

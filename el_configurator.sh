@@ -888,7 +888,9 @@ fi
 # Enable firewall (firewalld is enabled by default on EL)
 if [ "${FLAVOR}" = "rhel" ]; then
     dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
-    systemctl enable --now firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
+    systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
+    # Starting firewalld may need a reboot to work, so let's not log start failures here
+    systemctl start firewalld
 elif [ "${FLAVOR}" = "debian" ]; then
     apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
     systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
@@ -910,7 +912,9 @@ if [ "${SETUP_FAIL2BAN}" != false ]; then
     fi
     # Enable SSHD jail
     sed -i 's#^\[sshd\]#\[sshd\]\nenabled = true#g' /etc/fail2ban/jail.conf
-    systemctl enable --now fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
+    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
+    # Starting fail2ban may need a reboot to work, so let's not log start failures here
+    systemctl start fail2ban
 fi
 
 # Enable guest agent on KVM

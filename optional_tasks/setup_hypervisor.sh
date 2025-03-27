@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2025032001 for RHEL9
+## Hypervisor Installer 2025032701 for RHEL9
 
 # Requirements:
 # RHEL9 installed with NPF VMv4 profile incl. node exporter
@@ -9,7 +9,7 @@
 # optional, setup_hypervisor.conf file with variable overrides
 [ -f ./setup_hypervisor.conf ] && source ./setup_hypervisor.conf
 
-# Setup bridge for first ethernet interface
+# Setup bridge for first ethernet interface and use it's IP configuration
 [ -z "${SETUP_BRIDGE}" ] && SETUP_BRIDGE=true
 
 # COCKPIT ALLOWED USER
@@ -160,9 +160,38 @@ if [ "${SETUP_BRIDGE}" != false ]; then
         log_quit "Failed to get first ethernet interface" "ERROR"
     fi
 
-    # Disable spanning tree so we don't interrupt existing STP infrastructure
+    # Get nmcli connection name for interface
+    cnx="$(nmcli -t -f GENERAL.CONNECTION d show $iface | awk -F':' '{print $2}')"
+    if [ -z "$cnx" ]; then
+        log_quit "Failed to get connection name for interface ${iface}" "ERROR"
+    fi
+
+    # Configure a bridge
+     # Disable spanning tree so we don't interrupt existing STP infrastructure
     nmcli c add type bridge ifname kvmbr0 con-name kvmbr0 autoconnect yes bridge.stp no 2>> "${LOG_FILE}" || log "Creating bridge failed" "ERROR"
-    nmcli c modify kvmbr0 ipv4.method auto 2>> "${LOG_FILE}" || log "Setting bridge ipv4 DHCP failed" "ERROR"
+    
+    # Get IPv4 and IPv6 settings only from connection and apply them to newly created bridge
+    # For whatever reason, there's no config export / import in nmcli
+    # --terse allows some parseable output
+    # So we need to parse nmcli output lines like ipv4.method:auto to ipv4.method auto so nmcli accepts it's own output !!!
+    # like ':' separator could never be used in an IP address !!!
+    nmcli_settings=""
+    while read -r setting; do
+        nmcli_setting_name=$(echo "${setting}" | awk -F'=' '{print $1}')
+        nmcli_setting_value=$(echo "${setting}" | awk -F'=' '{print $2}')
+        if [ "${nmcli_setting_name}" == "ipv4.routes" ] || [ "${nmcli_setting_name}" == "ipv6.routes" ]; then
+            while read -rd, route_setting; do
+                nmcli_settings="${nmcli_settings} +${nmcli_setting_name} \"${route_setting}\""
+            done <<< "${nmcli_setting_value}"
+        else
+            nmcli_settings="${nmcli_settings} ${nmcli_setting_name} \"${nmcli_setting_value}\""
+        fi
+    done < <(nmcli --terse -o --show-secrets c show --active "$cnx" | grep "^ipv4\|^ipv6" | sed 's/:/=/')
+    echo "Configuring bridge with settings: ${nmcli_settings}"
+    eval "nmcli c modify kvmbr0 ${nmcli_settings}" #  2>> "${LOG_FILE}" || log "Failed to modify connection $cnx" "ERROR"
+
+
+    #nmcli c modify kvmbr0 ipv4.method auto 2>> "${LOG_FILE}" || log "Setting bridge ipv4 DHCP failed" "ERROR"
     nmcli c add type bridge-slave ifname "${iface}" master kvmbr0 autoconnect yes 2>> "${LOG_FILE}" || log "Adding bridge slave failed" "ERROR"
     nmcli c up kvmbr0  2>> "${LOG_FILE}" || log "Enabling bridge failed" "ERROR"
     nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"

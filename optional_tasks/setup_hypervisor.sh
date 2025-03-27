@@ -16,7 +16,7 @@
 [ -z "${ADMIN_USER}" ] && ADMIN_USER=myuser
 
 # Setup SNMP
-[ -z "${SETUP_SNMP}" ] && SETUP_SNMP=true
+[ -z "${SETUP_SNMP}" ] && SETUP_SNMP=false
 
 # HARDWARE ID for NetPerfect hardware
 # or UNKNOWN for other hardware

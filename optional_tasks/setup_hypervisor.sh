@@ -188,13 +188,13 @@ if [ "${SETUP_BRIDGE}" != false ]; then
         fi
     done < <(nmcli --terse -o --show-secrets c show --active "$cnx" | grep "^ipv4\|^ipv6" | sed 's/:/=/')
     echo "Configuring bridge with settings: ${nmcli_settings}"
-    eval "nmcli c modify kvmbr0 ${nmcli_settings}" #  2>> "${LOG_FILE}" || log "Failed to modify connection $cnx" "ERROR"
+    eval "nmcli c modify kvmbr0 ${nmcli_settings}" 2>> "${LOG_FILE}" || log "Failed to modify connection $cnx" "ERROR"
 
 
     #nmcli c modify kvmbr0 ipv4.method auto 2>> "${LOG_FILE}" || log "Setting bridge ipv4 DHCP failed" "ERROR"
     nmcli c add type bridge-slave ifname "${iface}" master kvmbr0 autoconnect yes 2>> "${LOG_FILE}" || log "Adding bridge slave failed" "ERROR"
     nmcli c up kvmbr0  2>> "${LOG_FILE}" || log "Enabling bridge failed" "ERROR"
-    nmcli c del "${iface}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
+    nmcli c del "${cnx}"  2>> "${LOG_FILE}" || log "Deleting interface ${iface} config failed" "ERROR"
 fi
 
 log "#### Setting up virtualization ####"

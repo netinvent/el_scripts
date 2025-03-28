@@ -60,7 +60,7 @@ CONFIGURE_NODE_EXPORTER=true
 NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
 
 # Make sure system automatically installs security updates
-SETUP_AUTOMATIC_UPDATES=true
+CONFIGURE_AUTOMATIC_UPDATES=true
 
 # Enable system watchdog
 CONFIGURE_WATCHDOG=true
@@ -949,7 +949,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
     fi
 fi
 
-if [ "${SETUP_FAIL2BAN}" != false ]; then
+if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
     log "Setting up fail2ban"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
@@ -999,13 +999,13 @@ if [ "${CONFIGURE_NODE_EXPORTER}" != false ]; then
 
     # Prometheus el_configurator version support
     cat << 'EOF' > /etc/cron.d/el_configurator
-    # Run el_configurator prometheus metrics every hour only
-    45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
-    EOF
+# Run el_configurator prometheus metrics every hour only
+45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
+EOF
     [ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
 
     # EL configurator metrics
-cat << 'EOF' > /usr/local/bin/el_configurator_metrics.sh
+    cat << 'EOF' > /usr/local/bin/el_configurator_metrics.sh
 #!/usr/bin/env bash
 
 el_configurator_date=0

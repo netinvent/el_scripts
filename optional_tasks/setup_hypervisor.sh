@@ -161,7 +161,7 @@ if [ "${SETUP_BRIDGE}" != false ]; then
     fi
 
     # Get nmcli connection name for interface
-    cnx="$(nmcli -t -f GENERAL.CONNECTION d show $iface | awk -F':' '{print $2}')"
+    cnx="$(nmcli -t -f GENERAL.CONNECTION d show "${iface}" | awk -F':' '{print $2}')"
     if [ -z "$cnx" ]; then
         log_quit "Failed to get connection name for interface ${iface}" "ERROR"
     fi

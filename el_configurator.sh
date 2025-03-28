@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025032101"
+SCRIPT_BUILD="2025032803"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -35,7 +35,6 @@ ___MOTD_STATUS_DO_NOT_DELETE___
 EOF
 )
 
-NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
 
 # Select SCAP PROFILE, choosing "" disables scap profile
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"
@@ -52,6 +51,34 @@ SETUP_SELINUX_DEBIAN=false
 
 # Configure serial terminal
 CONFIGURE_SERIAL_TERMINAL=true
+
+# Add resize_term and resize_term2 scripts to /etc/profile.d
+CONFIGURE_TERMINAL_RESIZER=true
+
+# Installa and configure node_exporter
+CONFIGURE_NODE_EXPORTER=true
+NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
+
+# Make sure system automatically installs security updates
+SETUP_AUTOMATIC_UPDATES=true
+
+# Enable system watchdog
+CONFIGURE_WATCHDOG=true
+
+# Use specific network schedulers (bbr + cake)
+CONFIGURE_NETWORK_SCHEDULING=true
+
+# Add client keep alives to sshd
+CONFIGURE_SSHD_CLIENT_ALIVE=true
+
+# Implement tuned profiles
+CONFIGURE_TUNED=true
+
+# Install and configure firewall
+CONFIGURE_FIREWALL=true
+
+# Install and configure fail2ban
+CONFIGURE_FAIL2BAN=true
 
 LOG_FILE=/root/.el-configurator.log
 
@@ -357,9 +384,21 @@ if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
         dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
-        dnf install -4 -y htop atop nmon iftop iptraf tuned tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        dnf install -4 -y htop atop nmon iftop iptraf tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+            dnf install -4 -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
+        fi
+        if [ "${CONFIGURE_TUNED}" != false ]; then
+            dnf install -4 -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
+        fi
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y htop atop nmon iftop iptraf-ng tuned tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        apt install -y htop atop nmon iftop iptraf-ng  tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+            apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
+        fi
+        if [ "${CONFIGURE_TUNED}" != false ]; then
+            apt install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
+        fi
     fi
 else
     log "No epel available without internet. Didn't install additional packages."
@@ -593,8 +632,10 @@ EOF
     echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
 
     # TODO Test this for Debian
-    log "Setting up iTCO_wdt watchdog"
-    echo "iTCO_wdt" > /etc/modules-load.d/10-watchdog.conf
+    if [ "${CONFIGURE_WATCHDOG}" != false ]; then
+        log "Setting up iTCO_wdt watchdog"
+        echo "iTCO_wdt" > /etc/modules-load.d/10-watchdog.conf
+    fi
 
     log "Setting up lm_sensors"
     if [ "${FLAVOR}" = "rhel" ]; then
@@ -610,12 +651,13 @@ EOF
         echo "options it87 force_id=0x8620" > /etc/modprobe.d/it87.conf
     fi
 
-    log "Setting up tuned profiles"
+    if [ "${CONFIGURE_TUNED}" != false ]; then
+        log "Setting up tuned profiles"
 
-    [ ! -d /etc/tuned/el-eco ] && mkdir /etc/tuned/el-eco
-    [ ! -d /etc/tuned/el-perf ]&& mkdir /etc/tuned/el-perf
+        [ ! -d /etc/tuned/el-eco ] && mkdir /etc/tuned/el-eco
+        [ ! -d /etc/tuned/el-perf ]&& mkdir /etc/tuned/el-perf
 
-    cat << 'EOF' > /etc/tuned/el-eco/tuned.conf
+        cat << 'EOF' > /etc/tuned/el-eco/tuned.conf
 [main]
 summary=EL NetPerfect Powersaver
 include=powersave
@@ -655,9 +697,9 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/tuned.conf" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/tuned.conf" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/el-perf/tuned.conf
+        cat << 'EOF' > /etc/tuned/el-perf/tuned.conf
 [main]
 summary=EL NetPerfect Performance
 include=network-latency
@@ -697,9 +739,9 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/tuned.conf" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/tuned.conf" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/el-eco/script.sh
+        cat << 'EOF' > /etc/tuned/el-eco/script.sh
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -735,9 +777,9 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/script.sh" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/script.sh" "ERROR"
 
-    cat << 'EOF' > /etc/tuned/el-perf/script.sh
+        cat << 'EOF' > /etc/tuned/el-perf/script.sh
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -769,14 +811,15 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-    [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/script.sh" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/script.sh" "ERROR"
 
-    chmod +x /etc/tuned/{el-eco,el-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
+        chmod +x /etc/tuned/{el-eco,el-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
+    fi
 else
     log "This is a virtual machine. We will not setup hardware tooling"
 fi
 
-if [ "${CONFIGURE_SERIAL_TERMINAL}" = true ]; then
+if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
     # Configure serial console
     log "Setting up serial console"
     systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
@@ -800,12 +843,11 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" = true ]; then
     fi
 fi
 
-
-
-# Setup automagic terminal resize
-# singequotes on EOF prevents variable expansion
-# Tested on EL8, EL9 and Debian 12
-cat << 'EOF' > /etc/profile.d/term_resize.sh
+if [ "${CONFIGURE_TERMINAL_RESIZER}" != false ]; then
+    # Setup automagic terminal resize
+    # singequotes on EOF prevents variable expansion
+    # Tested on EL8, EL9 and Debian 12
+    cat << 'EOF' > /etc/profile.d/term_resize.sh
 # Based on solution https://unix.stackexchange.com/a/283206/135459 that replaces xterm-resize package
 
 
@@ -842,7 +884,8 @@ resize_term2() {
 # Run only if we're in a serial terminal
 [ "$(tty)" = /dev/ttyS0 ] && resize_term2
 EOF
-[ $? -ne 0 ] && log "Failed to create /etc/profile.d/term_resize.sh" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /etc/profile.d/term_resize.sh" "ERROR"
+fi
 
 # Configure persistent journal
 log "Setting up persistent boot journal"
@@ -859,46 +902,53 @@ kill -USR1 "$(ps aux | grep '[s]ystemd-journald' | awk '{print $2}')"
 # Configure max journal size
 journalctl --vacuum-size=2G 2>> "${LOG_FILE}" || log "Failed to set journald vaccumsize" "ERROR"
 
-if [ "${FLAVOR}" = "rhel" ]; then
-    log "Setup DNF automatic except for updates that require reboot"
-    sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-    sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-    sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-    sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-    systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
-elif [ "${FLAVOR}" = "debian" ]; then
-    log "Setup unattended automatic upgrades"
-    apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
-    systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to start unattended-upgrades" "ERROR"
-else
-    log_quit "Cannot setup automatic updates on this system"
+if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+    log "Setting up automatic updates"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        log "Setup DNF automatic except for updates that require reboot"
+        sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        log "Setup unattended automatic upgrades"
+        systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to start unattended-upgrades" "ERROR"
+    else
+        log_quit "Cannot setup automatic updates on this system"
+    fi
 fi
 
-systemctl enable tuned 2>> "${LOG_FILE}" || log "Failed to start tuned" "ERROR"
-# tuned-adm will complain that tuned is not running, but we cannot start tuned in install environment
-# Hence, we will not log these errors. On reboot, the "good" profile will be selected anyway
-if [ ${IS_VIRTUAL} != true ]; then
-    log "Setting up hardware tuned profile"
-    tuned-adm profile el-eco
-else
-    log "Setting up virtual tuned profile"
-    tuned-adm profile virtual-guest
+if [ "${CONFIGURE_TUNED}" != false ]; then
+    log "Setting up tuned"
+    systemctl enable tuned 2>> "${LOG_FILE}" || log "Failed to start tuned" "ERROR"
+    # tuned-adm will complain that tuned is not running, but we cannot start tuned in install environment
+    # Hence, we will not log these errors. On reboot, the "good" profile will be selected anyway
+    if [ ${IS_VIRTUAL} != true ]; then
+        log "Setting up hardware tuned profile"
+        tuned-adm profile el-eco
+    else
+        log "Setting up virtual tuned profile"
+        tuned-adm profile virtual-guest
+    fi
 fi
 
-# Enable firewall (firewalld is enabled by default on EL)
-if [ "${FLAVOR}" = "rhel" ]; then
-    dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
-    systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
-    # Starting firewalld may need a reboot to work, so let's not log start failures here
-    systemctl start firewalld
-elif [ "${FLAVOR}" = "debian" ]; then
-    apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
-    systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
-    ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-    ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+if [ "${CONFIGURE_FIREWALL}" != false ]; then
+    log "Setting up firewall"
+    # Enable firewall (firewalld is enabled by default on EL)
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
+        systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
+        # Starting firewalld may need a reboot to work, so let's not log start failures here
+        systemctl start firewalld
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
+        systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
+        ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
+        ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+    fi
 fi
 
-# Install fail2ban
 if [ "${SETUP_FAIL2BAN}" != false ]; then
     log "Setting up fail2ban"
     if [ "${FLAVOR}" = "rhel" ]; then
@@ -932,28 +982,29 @@ if [ ${IS_VIRTUAL} = true ]; then
 fi
 
 # Prometheus support
-check_internet
-if [ $? -eq 0 ]; then
-    log "Installing Node exporter"
-    cd /opt || log "No /opt directory found"
-    [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    if type curl > /dev/null 2>&1; then
-        curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+if [ "${CONFIGURE_NODE_EXPORTER}" != false ]; then
+    check_internet
+    if [ $? -eq 0 ]; then
+        log "Installing Node exporter"
+        cd /opt || log "No /opt directory found"
+        [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
+        if type curl > /dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+        else
+            wget -qO- https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+        fi
     else
-        wget -qO- https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
+        log "No node_exporter installed" "ERROR"
     fi
-else
-    log "No node_exporter installed" "ERROR"
-fi
 
-# Prometheus el_configurator version support
-cat << 'EOF' > /etc/cron.d/el_configurator
-# Run el_configurator prometheus metrics every hour only
-45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
-EOF
-[ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
+    # Prometheus el_configurator version support
+    cat << 'EOF' > /etc/cron.d/el_configurator
+    # Run el_configurator prometheus metrics every hour only
+    45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
+    EOF
+    [ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"
 
-# EL configurator metrics
+    # EL configurator metrics
 cat << 'EOF' > /usr/local/bin/el_configurator_metrics.sh
 #!/usr/bin/env bash
 
@@ -967,21 +1018,28 @@ else
 fi
 echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK)\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 EOF
-[ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
-chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+    [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+    chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+fi
 
 # Setting up watchdog in systemd
-log "Setting up systemd watchdog"
-sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' /etc/systemd/system.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/system.conf" "ERROR"
+if [ "${CONFIGURE_WATCHDOG}" != false ]; then
+    log "Setting up systemd watchdog"
+    sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' /etc/systemd/system.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/system.conf" "ERROR"
+fi
 
-log "Setup cake qdisc algorithm and bbr congestion control"
-set_conf_value /etc/sysctl.d/99-sched.conf "net.core.default_qdisc" "cake"
-set_conf_value /etc/sysctl.d/99-sched.conf "net.ipv4.tcp_congestion_control" "bbr"
+if [ "${CONFIGURE_NETWORK_SCHEDULING}" != false ]; then
+    log "Setup cake qdisc algorithm and bbr congestion control"
+    set_conf_value /etc/sysctl.d/99-sched.conf "net.core.default_qdisc" "cake"
+    set_conf_value /etc/sysctl.d/99-sched.conf "net.ipv4.tcp_congestion_control" "bbr"
+fi
 
-# Add ClientAlive to SSHD
-set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
-set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
-set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
+if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
+    log "Adding ClientAlive settings to sshd"
+    set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
+    set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
+    set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
+fi
 
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"

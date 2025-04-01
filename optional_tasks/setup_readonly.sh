@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2025032101 for RHEL9
+## Readonly setup script 2025040101 for RHEL9
 
 # Requirements:
 # RHEL9 installed
@@ -80,7 +80,7 @@ set_conf_value /etc/sysconfig/readonly-root READONLY yes
 
 # Change default label of stateful partition to something less than 15 chars so XFS can hold that label
 # Those should already be set by the VMv4 kickstart file
-set_conf_vlaue etc/sysconfig/readonly-root STATE_LABEL STATEFULRW
+set_conf_value /etc/sysconfig/readonly-root STATE_LABEL STATEFULRW
 
 rm -f /etc/statetab.d/{snmp,nm,qemu,cockpit,rsyslog,prometheus,node_exporter,ztl} > /dev/null 2>&1
 rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1

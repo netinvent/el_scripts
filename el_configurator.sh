@@ -837,7 +837,7 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
         else
             sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1  console=tty0 console=ttyS0,115200,n8"#g' /etc/default/grub
         fi
-        grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
+        /sbin/grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
     else
         log_quit "Cannot setup serial console on this system"
     fi
@@ -944,8 +944,8 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
-        ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-        ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+        /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
+        /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
     fi
 fi
 

@@ -4,14 +4,14 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
 # Works with Debian 12
 
-SCRIPT_BUILD="2025032803"
+SCRIPT_BUILD="2025041101"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
-BRAND_VER=4.6
+BRAND_VER=4.7
 
 MOTD_MSG=$(cat << 'EOF'
  ___________________________________________________
@@ -256,23 +256,26 @@ set_conf_value() {
 	name="${2}"
 	value="${3}"
 	separator="${4:-=}"
-    # sed separator needs to be updated if '#' is used in name, separator or value
-    sed_separator="${5:-#}"
+    # sed separator $'\001' is chosen since it's unlikely to be used in a configuration file
+    # sed separator can be changede to any other character as long as it's not used
+    sed_separator="${5:-$'\001'}"
 
 	if [ -f "$file" ]; then
-		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
+		if grep -e "^${name}.*${separator}" "${file}" > /dev/null 2>&1; then
 			# Using -i.tmp for BSD compat
-			sed -i.eltmp "s${separator}^${name}(\s*)${sed_separator}(\s*).*${separator}${name}${sed_separator}${value}${separator}" "${file}"
+			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}"
 			if [ $? -ne 0 ]; then
 				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
 			fi
             # Remove temp file if exists
 			rm -f "$file.eltmp" > /dev/null 2>&1
-			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
+			log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
 		else
+            log "Creating conf [${name}] set to [${value}] in file [${file}]." "INFO"
 			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
 		fi
 	else
+        log "Creating file [${file}] with conf [${name}] set to [${value}]." "INFO"
 		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
 	fi
 }

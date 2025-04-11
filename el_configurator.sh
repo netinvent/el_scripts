@@ -966,7 +966,9 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
     fi
     # Enable SSHD jail by adding a local jail conf file
     ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
-    [ ! -f "${ssh_jailfile}" ] && echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+    if [ ! -f "${ssh_jailfile}" ]; then
+        echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+    fi
     set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
     systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
     # Starting fail2ban may need a reboot to work, so let's not log start failures here

@@ -964,8 +964,10 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
             sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
         fi
     fi
-    # Enable SSHD jail
-    sed -i 's#^\[sshd\]#\[sshd\]\nenabled = true#g' /etc/fail2ban/jail.conf
+    # Enable SSHD jail by adding a local jail conf file
+    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
+    [ ! -f "${ssh_jailfile}" ] && echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
     systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
     # Starting fail2ban may need a reboot to work, so let's not log start failures here
     systemctl start fail2ban

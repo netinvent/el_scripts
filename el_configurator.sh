@@ -632,7 +632,7 @@ EOF
     chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
     log "Setting up smart script for prometheus task"
     [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-    echo "*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+    echo -e "MAILTO=""\n*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
 
     # TODO Test this for Debian
     if [ "${CONFIGURE_WATCHDOG}" != false ]; then
@@ -1008,6 +1008,7 @@ if [ "${CONFIGURE_NODE_EXPORTER}" != false ]; then
     # Prometheus el_configurator version support
     cat << 'EOF' > /etc/cron.d/el_configurator
 # Run el_configurator prometheus metrics every hour only
+MAILTO=""
 45 * * * * root /bin/bash /usr/local/bin/el_configurator_metrics.sh > /dev/null 2>&1
 EOF
     [ $? -ne 0 ] && log "Failed to create /etc/cron.d/el_configurator" "ERROR"

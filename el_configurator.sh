@@ -323,6 +323,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
         elif [ "${FLAVOR}" = "debian" ]; then
             # Download debian 12 anssi profiles which need ssg-debian 0.17.4 at least
             # which are not available in stable as of 2025/02/14
+            # As of 2025/04/24, ssg-debian 0.1.76-1 is the most recent release one can get
             if [ "${RELEASE}" = 12 ]; then
                 log "Downloading up ssg openscap data for debian 12"
                 if type curl > /dev/null 2>&1; then

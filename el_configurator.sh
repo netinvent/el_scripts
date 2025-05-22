@@ -37,7 +37,7 @@ EOF
 
 
 # Select SCAP PROFILE, choosing "" disables scap profile
-# Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${FLAVOR}${RELEASE}-ds.xml"
+# Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
 # where flavor in rhel,debian and release = major os version
 SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
@@ -172,7 +172,9 @@ is_virtual() {
 
 get_el_version() {
     if [ -f /etc/os-release ]; then
-        DIST=$(awk '{ if ($1~/^NAME=/) { sub("NAME=","", $0); gsub("\"", "", $0); print tolower($0) }}' /etc/os-release)
+        # DIST must contain "rhel", "almalinux", "debian" or alike
+	# The following awk line has been tested on almalinux 8, rhel 10 and debian 12
+        DIST=$(awk '{ if ($1~/^ID=/) { sub("ID=","", $0); gsub("\"","", $0); print tolower($0) }}' /etc/os-release)
         if grep 'ID="rhel"' /etc/os-release > /dev/null || grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
@@ -182,12 +184,12 @@ get_el_version() {
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
             else
-                log_quit "RHEL Like release not compatible"
+                log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
             if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ] || [ "${RELEASE}" -eq 10 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
             else
-                log_quit "Not compatible with ${DIST} release ${RELEASE}"
+                log_quit "Debian or alive release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
         elif grep 'ID=*debian*' /etc/os-release > /dev/null; then
             FLAVOR=debian

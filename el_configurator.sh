@@ -394,7 +394,7 @@ check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
+        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
         dnf install -4 -y htop atop nmon iftop iptraf tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
             dnf install -4 -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
@@ -964,23 +964,38 @@ fi
 if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
     log "Setting up fail2ban"
     if [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
+        dnf install -y fail2ban 2>> "${LOG_FILE}"
+	if [ $? != 0 ]; then
+ 		log "Failed to install fail2ban" "ERROR"
+   		FAIL2BAN_INSTALLED=false
+     	else
+      		FAIL2BAN_INSTALLTED=true
+	fi
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y fail2ban 2>> "${LOG_FILE}" || log "Failed to install fail2ban" "ERROR"
-        # On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
-        if [ "${RELEASE}" = 12 ]; then
-            sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
-        fi
+        apt install -y fail2ban 2>> "${LOG_FILE}"
+	if [ $? != 0 ]; then
+ 		log "Failed to install fail2ban" "ERROR"
+   		FAIL2BAN_INSTALLED=false
+	else
+ 		FAIL2BAN_INSTALLTED=true
+        	# On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
+        	if [ "${RELEASE}" = 12 ]; then
+            	sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
+        	fi
+	 fi
     fi
-    # Enable SSHD jail by adding a local jail conf file
-    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
-    if [ ! -f "${ssh_jailfile}" ]; then
-        echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
-    fi
-    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
-    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
-    # Starting fail2ban may need a reboot to work, so let's not log start failures here
-    systemctl start fail2ban
+
+    if [ "${FAIL2BAN_INSTALLTED}" == true ]; then
+	    # Enable SSHD jail by adding a local jail conf file
+	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
+	    if [ ! -f "${ssh_jailfile}" ]; then
+	        echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+	    fi
+	    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
+	    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
+	    # Starting fail2ban may need a reboot to work, so let's not log start failures here
+	    systemctl start fail2ban
+     fi
 fi
 
 # Enable guest agent on KVM

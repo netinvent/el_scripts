@@ -932,7 +932,7 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
         log "Setup unattended automatic upgrades"
 	# Base file can be found in /usr/share/unattended-upgrades/20auto-upgrades
 	auto_upgrades="/etc/apt/apt.conf.d/20auto-upgrades"
-	> "${auto_upgrades}"
+	: > "${auto_upgrades}"
  	set_conf_value "${auto_upgrades}" "APT::Periodic::Update-Package-Lists" "\"1\";" " "
   	set_conf_value "${auto_upgrades}" "APT::Periodic::Unattended-Upgrade" "\"1\";" " "
   	set_conf_value "${auto_upgrades}" "APT::Periodic::Download-Upgradeable-Packages" "\"1\";" " "

@@ -283,6 +283,9 @@ set_conf_value() {
 ## Script entry point
 POST_INSTALL_SCRIPT_GOOD=true
 
+# Make debian dpkg happy when running via su
+export PATH=$PATH:/sbin:/usr/sbin
+
 get_kernel_arguments
 get_el_version
 is_virtual

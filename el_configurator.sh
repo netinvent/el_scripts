@@ -930,7 +930,15 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
         systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         log "Setup unattended automatic upgrades"
-        systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to start unattended-upgrades" "ERROR"
+	# Base file can be found in /usr/share/unattended-upgrades/20auto-upgrades
+	auto_upgrades="/etc/apt/apt.conf.d/20auto-upgrades"
+	> "${auto_upgrades}"
+ 	set_conf_value "${auto_upgrades}" "APT::Periodic::Update-Package-Lists" "\"1\";" " "
+  	set_conf_value "${auto_upgrades}" "APT::Periodic::Unattended-Upgrade" "\"1\";" " "
+  	set_conf_value "${auto_upgrades}" "APT::Periodic::Download-Upgradeable-Packages" "\"1\";" " "
+  	set_conf_value "${auto_upgrades}" "APT::Periodic::AutocleanInterval" "\"30\";" " "
+	systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to enable unattended-upgrades" "ERROR"
+ 	systemctl enable apt-daily-upgrade.timer 2>> "${LOG_FILE}" || log "Failed to enable apt-daily-upgrade.timer" "ERROR"
     else
         log_quit "Cannot setup automatic updates on this system"
     fi

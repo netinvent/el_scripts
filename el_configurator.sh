@@ -974,7 +974,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
  		log "Failed to install fail2ban" "ERROR"
    		FAIL2BAN_INSTALLED=false
      	else
-      		FAIL2BAN_INSTALLTED=true
+      		FAIL2BAN_INSTALLED=true
 	fi
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y fail2ban 2>> "${LOG_FILE}"
@@ -982,7 +982,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
  		log "Failed to install fail2ban" "ERROR"
    		FAIL2BAN_INSTALLED=false
 	else
- 		FAIL2BAN_INSTALLTED=true
+ 		FAIL2BAN_INSTALLED=true
         	# On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
         	if [ "${RELEASE}" = 12 ]; then
             	sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
@@ -990,7 +990,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	 fi
     fi
 
-    if [ "${FAIL2BAN_INSTALLTED}" == true ]; then
+    if [ "${FAIL2BAN_INSTALLED}" == true ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then

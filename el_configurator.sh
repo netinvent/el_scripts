@@ -177,14 +177,14 @@ get_el_version() {
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
                 RELEASE=10
-            if grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
+            elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
             else
                 log_quit "RHEL Like release not compatible"
             fi
-            if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ]; then
+            if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ] || [ "${RELEASE}" -eq 10 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE}"

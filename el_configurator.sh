@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
 # Security & basic setup configuration script from NetPerfect
-# Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8 and EL9
+# Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 
-SCRIPT_BUILD="2025041101"
+SCRIPT_BUILD="2025052201"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
-BRAND_VER=4.7
+BRAND_VER=4.8
 
 MOTD_MSG=$(cat << 'EOF'
  ___________________________________________________
@@ -172,9 +172,11 @@ is_virtual() {
 
 get_el_version() {
     if [ -f /etc/os-release ]; then
-        DIST=$(awk '{ if ($1~/^NAME=/) { sub("NAME=","", $1); gsub("\"", "", $1); print tolower($1) }}' /etc/os-release)
-        if grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
+        DIST=$(awk '{ if ($1~/^NAME=/) { sub("NAME=","", $0); gsub("\"", "", $0); print tolower($0) }}' /etc/os-release)
+        if grep 'ID="rhel"' /etc/os-release > /dev/null || grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
             FLAVOR=rhel
+	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
+                RELEASE=10
             if grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then

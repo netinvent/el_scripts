@@ -179,10 +179,13 @@ get_el_version() {
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
                 RELEASE=10
+		SYSTEMD_PREFIX=/usr/lib/systemd
             elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
+		SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
+		SYSTEMD_PREFIX=/etc/systemd
             else
                 log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
@@ -195,8 +198,10 @@ get_el_version() {
             FLAVOR=debian
             if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
                 RELEASE=11
+		SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
                 RELEASE=12
+		SYSTEMD_PREFIX=/etc/systemd
             fi
             if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
@@ -903,7 +908,7 @@ fi
 log "Setting up persistent boot journal"
 [ ! -d /var/log/journal ] && mkdir /var/log/journal
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
-sed -i 's/.*Storage=.*/Storage=persistent/g' /etc/systemd/journald.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/journald.conf" "ERROR"
+sed -i 's/.*Storage=.*/Storage=persistent/g' "${SYSTEMD_PREFIX}/journald.conf" 2>> "${LOG_FILE}" || log "Failed to sed ${SYSTEMD_PREFIX}/journald.conf" "ERROR"
 
 # Since kilall is not present on debian, we'll use plain old kill
 # killall -USR1 systemd-journald
@@ -1057,7 +1062,7 @@ fi
 # Setting up watchdog in systemd
 if [ "${CONFIGURE_WATCHDOG}" != false ]; then
     log "Setting up systemd watchdog"
-    sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' /etc/systemd/system.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/systemd/system.conf" "ERROR"
+    sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' "${SYSTEMD_PREFIX}/system.conf" 2>> "${LOG_FILE}" || log "Failed to sed ${SYSTEMD_PREFIX}/system.conf" "ERROR"
 fi
 
 if [ "${CONFIGURE_NETWORK_SCHEDULING}" != false ]; then

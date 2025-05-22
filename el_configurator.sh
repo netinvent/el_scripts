@@ -43,7 +43,7 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
-# By default, ANSSI profiles disable sudo (which is a good thing)
+# By default, ANSSI profiles disable sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
 ALLOW_SUDO=false
 
 # Setup SELinux on Debian

@@ -952,7 +952,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
-        /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
+        echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
         /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
     fi
 fi

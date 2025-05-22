@@ -341,7 +341,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
             fi
             apt install -y openscap-utils  2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         else
-            loq_quit "Cannot setup OpenSCAP on this system"
+            log_quit "Cannot setup OpenSCAP on this system"
         fi
         log "Setting up scap profile with remote resources"
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1

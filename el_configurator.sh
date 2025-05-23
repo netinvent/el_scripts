@@ -399,8 +399,13 @@ check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
-        dnf install -4 -y htop atop nmon iftop iptraf tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        if [ "{RELEASE}" -eq 10 ]; then
+            dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
+            dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
+        else
+            dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
+            dnf install -4 -y htop atop nmon iftop iptraf tar dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        fi
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
             dnf install -4 -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
         fi

@@ -336,7 +336,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
             # Download debian 12 anssi profiles which need ssg-debian 0.17.4 at least
             # which are not available in stable as of 2025/02/14
             # As of 2025/04/24, ssg-debian 0.1.76-1 is the most recent release one can get
-            if [ "${RELEASE}" = 12 ]; then
+            if [ "${RELEASE}" -eq 12 ]; then
                 log "Downloading up ssg openscap data for debian 12"
                 if type curl > /dev/null 2>&1; then
                     curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
@@ -399,7 +399,7 @@ check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
-        if [ "{RELEASE}" -eq 10 ]; then
+        if [ "${RELEASE}" -eq 10 ]; then
             dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
             dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
         else

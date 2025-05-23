@@ -11,10 +11,11 @@ This script collection is designed to work on:
 - Debian 12
 
 
-### Enterprise Linux configurator script
+### Enterprise Linux / Debian configurator script `el_configurator.sh`
 
-The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 profiles, and configure various enhancements. The script is already included in the kickstart file.
+The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 profiles, and configure various security and other enhancements. The script is already included in the el specific kickstart file.
 
+#### Quickstart
 To configure an existing setup, you can use the following  
 >[!WARNING]
 >Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
@@ -35,17 +36,18 @@ Adding Prometheus node_exporter, the script will also add two new metrics:
 - `el_configurator_setup_date` which will contain the timestamp of the last el_configurator run
 - `el_configurator_state` which will contain state (0=Success, 1=Failure/Missing) of last run
 
-The `el_configurator` script will also provide the following setups:
+The `el_configurator.sh` script will also provide the following setups:
 
 - Optional packages if physical machine
     - pre-configured smartmontools daemon
-    - Optional IT8613 support
-    - Intel TCO Watchdog support
-    - Tuned config profiles npf-eco and npf-perf
+    - Optional IT8613 support if detected
+    - Intel iTCO Watchdog support
+    - Additional tuned config profiles npf-eco and npf-perf
     - Qemu guest agent setup on KVM machines
 - Optional enabling serial console on tty and grub interface
     - Add `resize_term` and `resize_term2` scripts which allow to deal with tty resizing in terminal
 - Optional steps if DHCP internet is found
+    - Installation of EPEL repository (el only)
     - Installation of non standard packages
     - ANSSI-BP028 SCAP Profile configuration with report
     - Prometheus Node exporter installation
@@ -55,8 +57,9 @@ The `el_configurator` script will also provide the following setups:
 - Cleanup of image after setup
 
 
-All variables in `el_configurator` script can be overridden by kernel arguments that have the `NPF_` prefix. 
+All variables in `el_configurator.sh` script can be overridden by kernel arguments that have the `NPF_` prefix. 
 Example, in order to override `SCAP_PROFILE` variable, set the following kernel argument: `NPF_SCAP_PROFILE=myvalue`
+
 
 ### RHEL specific Kickstart file
 
@@ -78,10 +81,13 @@ Automatic setup of machines with
 
 Of course, you can adjust those values or create new partition schemas directly in the python script.
 
-The kickstart post-script section includes the `el_configurtor.sh` script.
+All variables in the pre-script be overridden by kernel arguments that have the `NPF_` prefix. 
+Example, in order to override `HOSTNAME` variable, set the following kernel argument: `NPF_HOSTNAME=myvalue`
+
+The kickstart post-script section includes the `el_configurtor.sh` script. As with the pre-script, all variables in el_configurator.sh can also be overriden with `NPF_VARNAME=myvalue` style kernel arguments.
 
 - Optional setups on virtual machines
-    - Exclusion of firmware packages
+    - Exclusion of firmware packages in anaconda
 
 
 ##### Technical notes about the kickstart script

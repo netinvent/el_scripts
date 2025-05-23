@@ -7,7 +7,7 @@
 ## Enterprise Linux configuration collection
 
 This script collection is designed to work on:
-- Redhat / AlmaLinux / RockyLinux / CentOS and other EL8 / EL9 clones
+- Redhat / AlmaLinux / RockyLinux / CentOS and other EL8, EL9 or EL10 clones
 - Debian 12
 
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2025032701 for RHEL9
+## Hypervisor Installer 2025032701 for RHEL9/10
 
 # Requirements:
-# RHEL9 installed with NPF VMv4 profile incl. node exporter
-# XFS System partition 50G for system
+# RHEL9
+# System partition 30G for system
 
 # optional, setup_hypervisor.conf file with variable overrides
 [ -f ./setup_hypervisor.conf ] && source ./setup_hypervisor.conf
@@ -93,7 +93,11 @@ log "#### Installing prerequisites ####"
 dnf install -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel release" "ERROR"
 dnf install -y policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
 dnf install -y virt-what tar bzip2 2>> "${LOG_FILE}" || log "Failed to install system tools" "ERROR"
-dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install KVM" "ERROR"
+dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines 2>> "${LOG_FILE}" || log "Failed to install KVM" "ERROR"
+dnf install -y cockpit cockpit-machines 2>> "${LOG_FILE}" || log "Failed to install cockpit" "ERROR"
+dnf install -y pcp 2>> "${LOG_FILE}" || log "pcp" "ERROR"
+dnf install -y cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install cockpit-pcp" "ERROR"
+dnf install -y openssl 2>> "${LOG_FILE}" || log "Failed to instlal openssl" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
 dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"

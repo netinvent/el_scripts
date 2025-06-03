@@ -97,7 +97,7 @@ dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guest
 dnf install -y cockpit cockpit-machines 2>> "${LOG_FILE}" || log "Failed to install cockpit" "ERROR"
 dnf install -y pcp 2>> "${LOG_FILE}" || log "pcp" "ERROR"
 dnf install -y cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install cockpit-pcp" "ERROR"
-dnf install -y openssl 2>> "${LOG_FILE}" || log "Failed to instlal openssl" "ERROR"
+dnf install -y openssl 2>> "${LOG_FILE}" || log "Failed to install openssl" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
 dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"

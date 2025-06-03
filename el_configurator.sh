@@ -405,7 +405,7 @@ if [ $? -eq 0 ]; then
         else
             dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
             dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
-            # The following packages are epel dependant
+            # The following packages are epel dependent
             dnf install -4 -y htop atop nmon iftop iptraf 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
         fi
         dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"

@@ -678,10 +678,15 @@ EOF
     if [ "${CONFIGURE_TUNED}" != false ]; then
         log "Setting up tuned profiles"
 
-        [ ! -d /etc/tuned/el-eco ] && mkdir /etc/tuned/el-eco
-        [ ! -d /etc/tuned/el-perf ]&& mkdir /etc/tuned/el-perf
+        if [ "${RELEASE}" -eq 10 ]; then
+            TUNED_DIR=/etc/tuned/profiles
+        else
+            TUNED_DIR=/etc/tuned
+        fi
+        [ ! -d "${TUNED_DIR}/el-eco" ] && mkdir -p "${TUNED_DIR}/el-eco"
+        [ ! -d "${TUNED_DIR}/el-eco" ]&& mkdir -p "${TUNED_DIR}/el-perf"
 
-        cat << 'EOF' > /etc/tuned/el-eco/tuned.conf
+        cat << 'EOF' > "${TUNED_DIR}/el-eco/tuned.conf"
 [main]
 summary=EL NetPerfect Powersaver
 include=powersave
@@ -721,9 +726,9 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/tuned.conf" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-eco/tuned.conf" "ERROR"
 
-        cat << 'EOF' > /etc/tuned/el-perf/tuned.conf
+        cat << 'EOF' > "${TUNED_DIR}/el-perf/tuned.conf"
 [main]
 summary=EL NetPerfect Performance
 include=network-latency
@@ -763,9 +768,9 @@ vm.dirty_writeback_centisecs = 100
 #script=\${i:PROFILE_DIR}/script.sh
 script=script.sh
 EOF
-        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/tuned.conf" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-perf/tuned.conf" "ERROR"
 
-        cat << 'EOF' > /etc/tuned/el-eco/script.sh
+        cat << 'EOF' > "${TUNED_DIR}/el-eco/script.sh"
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -801,9 +806,9 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-eco/script.sh" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-eco/script.sh" "ERROR"
 
-        cat << 'EOF' > /etc/tuned/el-perf/script.sh
+        cat << 'EOF' > "${TUNED_DIR}/el-perf/script.sh"
 #!/usr/bin/env bash
 
 SCRIPT_VER=2024040701
@@ -835,7 +840,7 @@ cpupower idle-set -E
 # Disable any higher than 50ns latency idle states
 cpupower idle-set -D 50
 EOF
-        [ $? -ne 0 ] && log "Failed to create /etc/tuned/el-perf/script.sh" "ERROR"
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-perf/script.sh" "ERROR"
 
         chmod +x /etc/tuned/{el-eco,el-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
     fi
@@ -1100,6 +1105,7 @@ if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
+        # chmod 4111 /usr/bin/sudo is not needed on RHEL normally
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"

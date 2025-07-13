@@ -411,10 +411,17 @@ if [ $? -eq 0 ]; then
             dnf install -4 -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
         else
             dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
-            dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
-            # The following packages are epel dependent
-            dnf install -4 -y htop atop nmon iftop iptraf 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
         fi
+        # The following packages are epel dependent
+        dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
+
+        # WIP: RHEL 10 ha no atop nor nmon for the moment
+        if [ "${RELEASE}" -eq 10 ] && [ "${DIST}" == "rhel" ]; then
+            available_packages="htop iftop iptraf"
+        else
+            available_packages="htop atop nmon iftop iptraf"
+        fi  
+        dnf install -4 -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
         dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
             dnf install -4 -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"

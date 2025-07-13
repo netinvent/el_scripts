@@ -79,7 +79,7 @@ CONFIGURE_FIREWALL=true
 
 # Optional whihtelist IPs / CIDR for firewall
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
-FIREEWALL_WHITELIST_IP_LIST=""
+FIREWALL_WHITELIST_IP_LIST=""
 
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true

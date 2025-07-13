@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 
-SCRIPT_BUILD="2025052201"
+SCRIPT_BUILD="2025071301"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -77,8 +77,15 @@ CONFIGURE_TUNED=true
 # Install and configure firewall
 CONFIGURE_FIREWALL=true
 
+# Optional whihtelist IPs / CIDR for firewall
+#FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
+FRIEWALL_WHITELIST_IP_LIST=""
+
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true
+
+# Optional whitelist IPs / CIDR for Fail2ban
+FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
 LOG_FILE=/root/.el-configurator.log
 
@@ -978,12 +985,26 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
         systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
         # Starting firewalld may need a reboot to work, so let's not log start failures here
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+            log "Adding whitelisted IPs to firewalld in trusted zone"
+            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
+                firewall-cmd --permanent --zone=trusted ---add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
+            done
+        fi
         systemctl start firewalld
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
         echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-        /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+            log "Adding whitelisted IPs to ufw"
+            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
+                /sbin/ufw allow from "${ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
+            done
+        else
+            Log "Adding generic SSH port permission to ufw so we can work"
+                /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"*
+        fi
     fi
 fi
 
@@ -1015,9 +1036,19 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then
-	        echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+	        echo "[DEFAULT]\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
 	    fi
+
 	    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
+        set_conf_value "${ssh_jailfile}" "bantime.increment" "true" " = "
+        set_conf_value "${ssh_jailfile}" "bantime.rndtime" "300" " = "
+        if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
+            set_conf_value "${ssh_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST}" " = "
+        fi
+        set_conf_value "${ssh_jailfile}" "bantime" "30m"
+        set_conf_value "${ssh_jailfile}" "findtime" "2h"
+        set_conf_value "${ssh_jailfile}" "maxretry" "3"
+
 	    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
 	    # Starting fail2ban may need a reboot to work, so let's not log start failures here
 	    systemctl start fail2ban

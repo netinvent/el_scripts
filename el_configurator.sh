@@ -79,7 +79,7 @@ CONFIGURE_FIREWALL=true
 
 # Optional whihtelist IPs / CIDR for firewall
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
-FRIEWALL_WHITELIST_IP_LIST=""
+FIREEWALL_WHITELIST_IP_LIST=""
 
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true
@@ -420,7 +420,9 @@ if [ $? -eq 0 ]; then
             available_packages="htop iftop iptraf"
         else
             available_packages="htop atop nmon iftop iptraf"
-        fi  
+        fi
+        # We actually want word splitting here
+        # shellcheck disable=SC2086
         dnf install -4 -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
         dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
@@ -994,6 +996,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         # Starting firewalld may need a reboot to work, so let's not log start failures here
         if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
             log "Adding whitelisted IPs to firewalld in trusted zone"
+            # shellcheck disable=SC2086
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
                 firewall-cmd --permanent --zone=trusted ---add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
             done
@@ -1006,7 +1009,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
             log "Adding whitelisted IPs to ufw"
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                /sbin/ufw allow from "${ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
+                /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
             done
         else
             Log "Adding generic SSH port permission to ufw so we can work"
@@ -1043,7 +1046,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then
-	        echo "[DEFAULT]\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+	        echo -e "[DEFAULT]\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
 	    fi
 
 	    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "

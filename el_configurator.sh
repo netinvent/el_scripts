@@ -934,7 +934,7 @@ EOF
         [ $? -ne 0 ] && log "Failed to create /usr/local/bin/smartmon.py" "ERROR"
 
         # github https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/commit/a2b43e19be1e64c31b626ca827506977cac93488
-        # 2024-11-19
+        # 2024-11-19 + PR #245
         cat << 'EOF' >> /usr/local/bin/nvme_metrics.py
 #!/usr/bin/env python3
 
@@ -1075,7 +1075,15 @@ def exec_nvme(*args):
     in child process environment so that the nvme tool does not perform any locale-specific number
     or date formatting, etc.
     """
-    cmd = ["nvme", *args]
+    nvme_command = None
+    for sys_path in ['/usr/sbin', '/usr/bin', '/usr/local/sbin', '/usr/local/bin']:
+        nvme_command = os.path.join(sys_path, 'nvme')
+        if os.path.isfile(nvme_command):
+            break
+        nvme_command = None
+    if not nvme_command:
+        raise FileNotFoundError("Did not find command path for {}".format(nvme_command))
+    cmd = [nvme_command, *args]
     return subprocess.check_output(cmd, stderr=subprocess.PIPE, env=dict(os.environ, LC_ALL="C"))
 
 

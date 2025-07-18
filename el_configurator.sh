@@ -461,8 +461,12 @@ if [ ${IS_VIRTUAL} != true ]; then
 
     if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" == true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"
-        python3 -m ensurepip 2>> "${LOG_FILE}" || log "Failed to ensure pip3 is installed" "ERROR"
-        python3 -m pip install prometheus_client 2>> "${LOG_FILE}" || log "Failed to install prometheus_client python package" "ERROR"
+        if [ "${FLAVOR}" = "rhel" ]; then
+            dnf install -y python3-prometheus_client "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
+        elif [ "${FLAVOR}" = "debian" ]; then
+            # Debian does not come with ensurepip but has prometheus-client library
+            apt install -y python3-prometheus-client 2>> "${LOG_FILE}" || log "Failed to install python3 and pip3" "ERROR"
+        fi
         log "Setting up python smart script for prometheus"
 
         # github https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/commit/6b36c812b59f42ee5d9e609fcaf17a61692e08d5
@@ -934,7 +938,6 @@ EOF
         [ $? -ne 0 ] && log "Failed to create /usr/local/bin/smartmon.py" "ERROR"
 
         # github https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/commit/a2b43e19be1e64c31b626ca827506977cac93488
-        # 2024-11-19 + PR #245
         cat << 'EOF' >> /usr/local/bin/nvme_metrics.py
 #!/usr/bin/env python3
 
@@ -1075,15 +1078,7 @@ def exec_nvme(*args):
     in child process environment so that the nvme tool does not perform any locale-specific number
     or date formatting, etc.
     """
-    nvme_command = None
-    for sys_path in ['/usr/sbin', '/usr/bin', '/usr/local/sbin', '/usr/local/bin']:
-        nvme_command = os.path.join(sys_path, 'nvme')
-        if os.path.isfile(nvme_command):
-            break
-        nvme_command = None
-    if not nvme_command:
-        raise FileNotFoundError("Did not find command path for {}".format(nvme_command))
-    cmd = [nvme_command, *args]
+    cmd = ["nvme", *args]
     return subprocess.check_output(cmd, stderr=subprocess.PIPE, env=dict(os.environ, LC_ALL="C"))
 
 
@@ -1199,8 +1194,8 @@ EOF
 [ $? -ne 0 ] && log "Failed to create /usr/local/bin/nvme_metrics.py" "ERROR"
         log "Setting up smart & nvme for prometheus task"
         [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-        echo -e "MAILTO=""\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
-        echo -e "MAILTO=""\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin;/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin;/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
 
     else
         log "Setting up bash smart script for prometheus"

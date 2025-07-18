@@ -462,7 +462,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" == true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"
         if [ "${FLAVOR}" = "rhel" ]; then
-            dnf install -y python3-prometheus_client "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
+            dnf install -y python3-prometheus_client 2>> "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
         elif [ "${FLAVOR}" = "debian" ]; then
             # Debian does not come with ensurepip but has prometheus-client library
             apt install -y python3-prometheus-client 2>> "${LOG_FILE}" || log "Failed to install python3 and pip3" "ERROR"

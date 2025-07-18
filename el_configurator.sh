@@ -1224,8 +1224,8 @@ EOF
 [ $? -ne 0 ] && log "Failed to create /usr/local/bin/nvme_metrics.py" "ERROR"
         log "Setting up smart & nvme for prometheus task"
         [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
-        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin;/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
-        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin;/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
 
     else
         log "Setting up bash smart script for prometheus"

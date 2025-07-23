@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 
-SCRIPT_BUILD="2025071501"
+SCRIPT_BUILD="2025072301"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -1823,10 +1823,11 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then
-	        echo -e "[DEFAULT]\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+	        echo -e "[DEFAULT]\nenabled = true\nbantime.increment = true\nbantime.rndtime = 300\nignoreip = 120.0.0.1/8\nbantime = 30m\nfindtime = 2h\nmaxretry = 3\n\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
 	    fi
 
 	    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
+
         set_conf_value "${ssh_jailfile}" "bantime.increment" "true" " = "
         set_conf_value "${ssh_jailfile}" "bantime.rndtime" "300" " = "
         if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then

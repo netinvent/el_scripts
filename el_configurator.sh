@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 
-SCRIPT_BUILD="2025072301"
+SCRIPT_BUILD="2025080401"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -407,18 +407,12 @@ fi
 check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
+    dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
     if  [ "${FLAVOR}" = "rhel" ]; then
-        # RHEL doesn't have epel-release and needs manual download of the package
-        if [ "${RELEASE}" -eq 10 ] && [ "${DIST}" == "rhel" ]; then
-            dnf install -4 -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm 2>> "${LOG_FILE}" || log "Failed to install epel-release" "ERROR"
-        else
-            dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
-        fi
+        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
         # The following packages are epel dependent
-        dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
-
         # WIP: RHEL 10 ha no atop nor nmon for the moment
-        if [ "${RELEASE}" -eq 10 ] && [ "${DIST}" == "rhel" ]; then
+        if [ "${RELEASE}" -eq 10 ]; then
             available_packages="htop iftop iptraf"
         else
             available_packages="htop atop nmon iftop iptraf"
@@ -1729,24 +1723,29 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
     log "Setting up automatic updates"
     if [ "${FLAVOR}" = "rhel" ]; then
         log "Setup DNF automatic except for updates that require reboot"
-        sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        set_conf_value "${auto_updates}" "upgrade_type" "security" " "
+        set_conf_value "${auto_updates}" "download_updates" "yes" " "
+        set_conf_value "${auto_updates}" "apply_updates" "yes" " "
+        set_conf_value "${auto_updates}" "emit_via" "stdio" " "
+        set_conf_value "${auto_updates}" "apply_updates" "yes" " "
+        #sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        #sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        #sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
+        #sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
         systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         log "Setup unattended automatic upgrades"
-	# Base file can be found in /usr/share/unattended-upgrades/20auto-upgrades
-	auto_upgrades="/etc/apt/apt.conf.d/20auto-upgrades"
-	: > "${auto_upgrades}"
- 	set_conf_value "${auto_upgrades}" "APT::Periodic::Update-Package-Lists" "\"1\";" " "
-  	set_conf_value "${auto_upgrades}" "APT::Periodic::Unattended-Upgrade" "\"1\";" " "
-  	set_conf_value "${auto_upgrades}" "APT::Periodic::Download-Upgradeable-Packages" "\"1\";" " "
-  	set_conf_value "${auto_upgrades}" "APT::Periodic::AutocleanInterval" "\"30\";" " "
-	systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to enable unattended-upgrades" "ERROR"
- 	systemctl enable apt-daily-upgrade.timer 2>> "${LOG_FILE}" || log "Failed to enable apt-daily-upgrade.timer" "ERROR"
+        # Base file can be found in /usr/share/unattended-upgrades/20auto-upgrades
+        auto_upgrades="/etc/apt/apt.conf.d/20auto-upgrades"
+        : > "${auto_upgrades}"
+        set_conf_value "${auto_upgrades}" "APT::Periodic::Update-Package-Lists" "\"1\";" " "
+        set_conf_value "${auto_upgrades}" "APT::Periodic::Unattended-Upgrade" "\"1\";" " "
+        set_conf_value "${auto_upgrades}" "APT::Periodic::Download-Upgradeable-Packages" "\"1\";" " "
+        set_conf_value "${auto_upgrades}" "APT::Periodic::AutocleanInterval" "\"30\";" " "
+        systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to enable unattended-upgrades" "ERROR"
+        systemctl enable apt-daily-upgrade.timer 2>> "${LOG_FILE}" || log "Failed to enable apt-daily-upgrade.timer" "ERROR"
     else
-        log_quit "Cannot setup automatic updates on this system"
+        log_quit "Cannot setup automatic updates on this system. Looks unsupporte"
     fi
 fi
 

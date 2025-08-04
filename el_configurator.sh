@@ -1822,19 +1822,23 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then
-	        echo -e "[DEFAULT]\nenabled = true\nbantime.increment = true\nbantime.rndtime = 300\nignoreip = 120.0.0.1/8\nbantime = 30m\nfindtime = 2h\nmaxretry = 3\n\n[sshd]\nenabled = false" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
+            echo "[sshd]" > "${ssh_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${ssh_jailfile}" "ERROR"
 	    fi
-
 	    set_conf_value "${ssh_jailfile}" "enabled" "true" " = "
 
-        set_conf_value "${ssh_jailfile}" "bantime.increment" "true" " = "
-        set_conf_value "${ssh_jailfile}" "bantime.rndtime" "300" " = "
-        if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
-            set_conf_value "${ssh_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST}" " = "
+        default_jailfile="/etc/fail2ban/jail.d/99-default-el.conf"
+        if [ ! -f "${default_jailfile}" ]; then
+            echo "[DEFAULT]" > "${default_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${default_jailfile}" "ERROR"
         fi
-        set_conf_value "${ssh_jailfile}" "bantime" "30m"
-        set_conf_value "${ssh_jailfile}" "findtime" "2h"
-        set_conf_value "${ssh_jailfile}" "maxretry" "3"
+
+        set_conf_value "${default_jailfile}" "bantime.increment" "true" " = "
+        set_conf_value "${default_jailfile}" "bantime.rndtime" "300" " = "
+        if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
+            set_conf_value "${default_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST}" " = "
+        fi
+        set_conf_value "${default_jailfile}" "bantime" "30m" " = "
+        set_conf_value "${default_jailfile}" "findtime" "2h" " = "
+        set_conf_value "${default_jailfile}" "maxretry" "3" " = "
 
 	    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
 	    # Starting fail2ban may need a reboot to work, so let's not log start failures here

@@ -274,21 +274,26 @@ set_conf_value() {
 	name="${2}"
 	value="${3}"
 	separator="${4:-=}"
-    # sed separator $'\001' is chosen since it's unlikely to be used in a configuration file
-    # sed separator can be changede to any other character as long as it's not used
-    sed_separator="${5:-$'\001'}"
+    # sed separator $'\001' (SOH) is chosen since it's unlikely to be used in a configuration file
+    # sed separator can be changed to any other character as long as it's not used
+    # if not used, we'll go for the SOH character
+    sed_separator="${5:-false}"
+    if [ "${sed_separator}" == false ]; then
+        sed_separator=$(echo -en "\001")
+    fi
 
 	if [ -f "$file" ]; then
         # If separator is empty, this may fail if multiple entries beginning with name exist in file
 		if grep -e "^${name}.*${separator}" "${file}" > /dev/null 2>&1; then
+            log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
 			# Using -i.tmp for BSD compat
-			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}"
+			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}" >> "${LOG_FILE}" 2>&1
 			if [ $? -ne 0 ]; then
 				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
+                log "Current value is $(grep -e "^${name}.*${separator}" "${file}")" "NOTICE"
 			fi
             # Remove temp file if exists
 			rm -f "$file.eltmp" > /dev/null 2>&1
-			log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
 		else
             log "Creating conf [${name}] set to [${value}] in file [${file}]." "INFO"
 			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
@@ -1730,11 +1735,6 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
         set_conf_value "${auto_upgrades_file}" "download_updates" "yes" " = "
         set_conf_value "${auto_upgrades_file}" "apply_updates" "yes" " = "
         set_conf_value "${auto_upgrades_file}" "emit_via" "stdio" " = "
-        set_conf_value "${auto_upgrades_file}" "apply_updates" "yes" " = "
-        #sed -i 's/^upgrade_type[[:space:]]*=[[:space:]].*/upgrade_type = security/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        #sed -i 's/^download_updates[[:space:]]*=[[:space:]].*/download_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        #sed -i 's/^apply_updates[[:space:]]*=[[:space:]].*/apply_updates = yes/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
-        #sed -i 's/^emit_via[[:space:]]*=[[:space:]].*/emit_via = stdio/g' /etc/dnf/automatic.conf 2>> "${LOG_FILE}" || log "Failed to sed /etc/dnf/automatic.conf" "ERROR"
         systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         log "Setup unattended automatic upgrades"

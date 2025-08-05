@@ -4,14 +4,14 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 
-SCRIPT_BUILD="2025080401"
+SCRIPT_BUILD="2025080501"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
-BRAND_VER=4.9
+BRAND_VER=5.0
 
 MOTD_MSG=$(cat << 'EOF'
  ___________________________________________________

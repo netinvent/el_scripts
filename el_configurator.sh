@@ -279,6 +279,7 @@ set_conf_value() {
     sed_separator="${5:-$'\001'}"
 
 	if [ -f "$file" ]; then
+        # If separator is empty, this may fail if multiple entries beginning with name exist in file
 		if grep -e "^${name}.*${separator}" "${file}" > /dev/null 2>&1; then
 			# Using -i.tmp for BSD compat
 			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}"
@@ -1834,12 +1835,13 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
             echo "[DEFAULT]" > "${default_jailfile}" 2>> "${LOG_FILE}" || log "Failed to create ${default_jailfile}" "ERROR"
         fi
 
+        set_conf_value "${default_jailfile}" "bantime" "30m" " = "
         set_conf_value "${default_jailfile}" "bantime.increment" "true" " = "
         set_conf_value "${default_jailfile}" "bantime.rndtime" "300" " = "
         if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
             set_conf_value "${default_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST}" " = "
         fi
-        set_conf_value "${default_jailfile}" "bantime" "30m" " = "
+
         set_conf_value "${default_jailfile}" "findtime" "2h" " = "
         set_conf_value "${default_jailfile}" "maxretry" "3" " = "
 

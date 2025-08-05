@@ -1638,7 +1638,8 @@ fi
 if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
     # Configure serial console
     log "Setting up serial console"
-    systemctl enable --now serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
+    systemctl enable serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
+    systemctl start serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Starting serial getty failed" "ERROR"
     sed -i 's/^GRUB_TERMINAL="console"/GRUB_TERMINAL="serial console"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
     sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --unit=0 --word=8 --parity=no --speed 115200 --stop=1"/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub" "ERROR"
     sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=\(.*\)quiet\(.*\)/GRUB_CMDLINE_LINUX_DEFAULT=\1\2/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub for removing quiet" "ERROR"
@@ -1781,7 +1782,8 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         systemctl start firewalld
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
-        systemctl enable --now ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
+        systemctl enable ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
+        systemctl start ufw 2>> "${LOG_FILE}" || log "Failed to start ufw" "ERROR"
         echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
         if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
             log "Adding whitelisted IPs to ufw"

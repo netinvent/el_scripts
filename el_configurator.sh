@@ -1731,10 +1731,10 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
     if [ "${FLAVOR}" = "rhel" ]; then
         log "Setup DNF automatic except for updates that require reboot"
         auto_upgrades_file="/etc/dnf/automatic.conf"
-        set_conf_value "${auto_upgrades_file}" "upgrade_type" "security" " = "
-        set_conf_value "${auto_upgrades_file}" "download_updates" "yes" " = "
-        set_conf_value "${auto_upgrades_file}" "apply_updates" "yes" " = "
-        set_conf_value "${auto_upgrades_file}" "emit_via" "stdio" " = "
+        set_conf_value "${auto_upgrades_file}" "upgrade_type" "security" "="
+        set_conf_value "${auto_upgrades_file}" "download_updates" "yes" "="
+        set_conf_value "${auto_upgrades_file}" "apply_updates" "yes" "="
+        set_conf_value "${auto_upgrades_file}" "emit_via" "stdio" "="
         systemctl enable dnf-automatic.timer 2>> "${LOG_FILE}" || log "Failed to start dnf-automatic timer" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         log "Setup unattended automatic upgrades"

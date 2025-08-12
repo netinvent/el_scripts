@@ -413,8 +413,8 @@ fi
 check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
-    dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
     if  [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
         dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
         # The following packages are epel dependent
         # WIP: RHEL 10 ha no atop nor nmon for the moment
@@ -434,6 +434,7 @@ if [ $? -eq 0 ]; then
             dnf install -4 -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
         apt install -y htop atop nmon iftop iptraf-ng  tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
             apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"

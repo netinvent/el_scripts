@@ -90,6 +90,10 @@ CONFIGURE_FAIL2BAN=true
 # Optional whitelist IPs / CIDR for Fail2ban
 FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
+# Optionl allow non protected fs symlinks
+# Will be necessary for docker to write to /dev/stdout
+ALLOW_UNPROTECTED_FS_SYMLINKS=false
+
 LOG_FILE=/root/.el-configurator.log
 
 log() {
@@ -1839,7 +1843,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	    systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
 	    # Starting fail2ban may need a reboot to work, so let's not log start failures here
 	    systemctl start fail2ban
-     fi
+    fi
 fi
 
 # Enable guest agent on KVM
@@ -1896,6 +1900,12 @@ echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK
 EOF
     [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
     chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+fi
+
+if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then
+    log "Allowing unprotected symlinks in filesystems"
+    sysctl -w fs.protected_symlinks=0 2>> "${LOG_FILE}" || log "Failed to set fs.protected_symlinks at runtime" "ERROR"
+    set_conf_value /etc/sysctl.d/99-fs-symlinks.conf "fs.protected_symlinks" "0" || log "Failed to set fs.protected_symlinks in /etc/sysctl.d/99-fs-symlinks.conf" "ERROR"
 fi
 
 # Setting up watchdog in systemd

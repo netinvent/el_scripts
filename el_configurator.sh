@@ -91,7 +91,7 @@ CONFIGURE_FAIL2BAN=true
 FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
 # Optionl allow non protected fs symlinks
-# Will be necessary for docker to write to /dev/stdout
+# Will be necessary for docker to write to /dev/stdout via mount --bind links
 ALLOW_UNPROTECTED_FS_SYMLINKS=false
 
 LOG_FILE=/root/.el-configurator.log

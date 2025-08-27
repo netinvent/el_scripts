@@ -3,6 +3,7 @@
 # Security & basic setup configuration script from NetPerfect
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
+# Works with Debian 13, although atm no scap profile is available
 
 SCRIPT_BUILD="2025080501"
 
@@ -184,17 +185,18 @@ get_el_version() {
         # DIST must contain "rhel", "almalinux", "debian" or alike
 	# The following awk line has been tested on almalinux 8, rhel 10 and debian 12
         DIST=$(awk '{ if ($1~/^ID=/) { sub("ID=","", $0); gsub("\"","", $0); print tolower($0) }}' /etc/os-release)
+        RELEASE=0
         if grep 'ID="rhel"' /etc/os-release > /dev/null || grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
                 RELEASE=10
-		SYSTEMD_PREFIX=/usr/lib/systemd
+		        SYSTEMD_PREFIX=/usr/lib/systemd
             elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
-		SYSTEMD_PREFIX=/etc/systemd
+		        SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
-		SYSTEMD_PREFIX=/etc/systemd
+		        SYSTEMD_PREFIX=/etc/systemd
             else
                 log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
@@ -207,12 +209,15 @@ get_el_version() {
             FLAVOR=debian
             if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
                 RELEASE=11
-		SYSTEMD_PREFIX=/etc/systemd
+		        SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
                 RELEASE=12
-		SYSTEMD_PREFIX=/etc/systemd
+		        SYSTEMD_PREFIX=/etc/systemd
+            elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
+                RELEASE=13
+		        SYSTEMD_PREFIX=/etc/systemd
             fi
-            if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ]; then
+            if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE} "
@@ -348,22 +353,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
         if [ "${FLAVOR}" = "rhel" ]; then
             dnf install -y openscap scap-security-guide 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         elif [ "${FLAVOR}" = "debian" ]; then
-            # Download debian 12 anssi profiles which need ssg-debian 0.17.4 at least
-            # which are not available in stable as of 2025/02/14
-            # As of 2025/04/24, ssg-debian 0.1.76-1 is the most recent release one can get
-            if [ "${RELEASE}" -eq 12 ]; then
-                log "Downloading up ssg openscap data for debian 12"
-                if type curl > /dev/null 2>&1; then
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
-                else
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
-                fi
-                dpkg -i ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
-                dpkg -i ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
-            fi
-            apt install -y openscap-utils  2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            apt install -y openscap-utils ssg-base ssg-debderived ssg-debian ssg-applications 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi
@@ -1930,14 +1920,14 @@ fi
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"
     # Patch sudoers file since noexec is set by default, which prevents sudo
-    sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
-    if [ "${FLAVOR}" = "rhel" ]; then
+     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         # chmod 4111 /usr/bin/sudo is not needed on RHEL normally
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     fi
+    sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
 else
     log "Not altering sudo behavior"
 fi

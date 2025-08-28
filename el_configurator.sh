@@ -3,7 +3,7 @@
 # Security & basic setup configuration script from NetPerfect
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
-# Works with Debian 13, although atm no scap profile is available
+# Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
 SCRIPT_BUILD="2025080501"
 
@@ -40,6 +40,7 @@ EOF
 # Select SCAP PROFILE, choosing "" disables scap profile
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
 # where flavor in rhel,debian and release = major os version
+# See https://www.open-scap.org/download/
 SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false

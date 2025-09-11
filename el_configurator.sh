@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025091101"
+SCRIPT_BUILD="2025091102"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -384,11 +384,16 @@ if [ "${SCAP_PROFILE}" != false ]; then
         fi
     fi
 
-
     # Fix firewall cannot load after anssi_bp28_high
     if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then
         log "Fixing firewalld cannot load after anssi_bp28_high profile on ${FLAVOR}"
         setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
+    fi
+
+    # Fix ssh logins don't work with RHEL 9.6 after anssi_bp28_high
+    if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ] && [ "${RELEASE}" -eq 9 ]; then
+        log "Fixing sshd not working after anssi_bp28_high profile on ${FLAVOR} ${RELEASE}"
+        setsebool -P polyinstantiation_enabled 1 || log "Cannot configure SELinux polyinstantiation_enabled to 1" "ERROR"
     fi
 else
     log "No SCAP profile selected. Skipping SCAP profile setup"

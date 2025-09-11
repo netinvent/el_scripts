@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025080501"
+SCRIPT_BUILD="2025091101"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -1473,7 +1473,7 @@ EOF
             TUNED_DIR=/etc/tuned
         fi
         [ ! -d "${TUNED_DIR}/el-eco" ] && mkdir -p "${TUNED_DIR}/el-eco"
-        [ ! -d "${TUNED_DIR}/el-eco" ]&& mkdir -p "${TUNED_DIR}/el-perf"
+        [ ! -d "${TUNED_DIR}/el-perf" ]&& mkdir -p "${TUNED_DIR}/el-perf"
 
         cat << 'EOF' > "${TUNED_DIR}/el-eco/tuned.conf"
 [main]

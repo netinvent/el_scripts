@@ -40,27 +40,35 @@ set_conf_value() {
 	name="${2}"
 	value="${3}"
 	separator="${4:-=}"
-    # sed separator needs to be updated if '#' is used in name, separator or value
-    sed_separator="${5:-#}"
+    # sed separator $'\001' (SOH) is chosen since it's unlikely to be used in a configuration file
+    # sed separator can be changed to any other character as long as it's not used
+    # if not used, we'll go for the SOH character
+    sed_separator="${5:-false}"
+    if [ "${sed_separator}" == false ]; then
+        sed_separator=$(echo -en "\001")
+    fi
 
 	if [ -f "$file" ]; then
-		if grep "^${name}=" "${file}" > /dev/null 2>&1; then
+        # If separator is empty, this may fail if multiple entries beginning with name exist in file
+		if grep -e "^${name}.*${separator}" "${file}" > /dev/null 2>&1; then
+            log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
 			# Using -i.tmp for BSD compat
-			sed -i.eltmp "s${separator}^${name}(\s*)${sed_separator}(\s*).*${separator}${name}${sed_separator}${value}${separator}" "${file}"
+			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}" >> "${LOG_FILE}" 2>&1
 			if [ $? -ne 0 ]; then
 				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
+                log "Current value is $(grep -e "^${name}.*${separator}" "${file}")" "NOTICE"
 			fi
             # Remove temp file if exists
 			rm -f "$file.eltmp" > /dev/null 2>&1
-			log "Set [${name}] to [${value}] in file [${file}]." "INFO"
 		else
+            log "Creating conf [${name}] set to [${value}] in file [${file}]." "INFO"
 			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
 		fi
 	else
+        log "Creating file [${file}] with conf [${name}] set to [${value}]." "INFO"
 		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
 	fi
 }
-
 
 if [ "${target}" != "ztl" ] && [ "${target}" != "hv" ]; then
     log_quit "Target needs to be ztl or hv"
@@ -80,7 +88,7 @@ set_conf_value /etc/sysconfig/readonly-root READONLY yes
 
 # Change default label of stateful partition to something less than 15 chars so XFS can hold that label
 # Those should already be set by the VMv4 kickstart file
-set_conf_value /etc/sysconfig/readonly-root STATE_LABEL STATEFULRW
+set_conf_value /etc/sysconfig/readonly-root STATE_LABEL STATEFULRW 
 
 rm -f /etc/statetab.d/{snmp,nm,qemu,cockpit,rsyslog,prometheus,node_exporter,ztl} > /dev/null 2>&1
 rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1

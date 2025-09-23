@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025091102"
+SCRIPT_BUILD="2025092301"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand

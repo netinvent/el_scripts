@@ -92,8 +92,8 @@ rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1
 # find uuid with lsblk -f
 echo "/etc/snmp" >> /etc/statetab.d/snmp 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/snmp" "ERROR"
 echo "/etc/NetworkManager/system-connections" >> /etc/statetab.d/nm 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/nm" "ERROR"
-echo "/etc/prometheus" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
-echo "/var/lib/prometheus" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/prometheus" "ERROR"
+echo "/etc/prometheus/conf.d" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot add /etc/prometheus/conf.d to /etc/statetab.d/prometheus" "ERROR"
+echo "/var/lib/prometheus" >> /etc/statetab.d/prometheus 2>> "${LOG_FILE}" || log "Cannot add /var/lib/prometheus to /etc/statetab.d/prometheus" "ERROR"
 echo "/var/lib/node_exporter"  >> /etc/statetab.d/node_exporter 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/node_exporter" "ERROR"
 echo "/var/lib/rsyslog" >> /etc/statetab.d/rsyslog 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/rsyslog" "ERROR"
 # cockpit
@@ -126,7 +126,7 @@ if [ "${target}" == "hv" ]; then
     echo "/etc/libvirt" >> /etc/statetab.d/qemu 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/qemu" "ERROR"
     
     # Move default pool to data so we don't 
-    mkdir /data
+    [ ! -d /data ] && mkdir /data
     sed -i 's#/var/lib/libvirt/images#/data#g' /etc/libvirt/storage/default.xml 2>> "${LOG_FILE}" || log "Cannot change /var/lib/libvirt/images to /data in images.xml" "ERROR"
     semanage fcontext -a -t virt_image_t "/data(/.*)?" 2>> "${LOG_FILE}" || log "Cannot set virt_image_t on /data" "ERROR"
 fi

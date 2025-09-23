@@ -947,8 +947,8 @@ if __name__ == '__main__':
 EOF
         [ $? -ne 0 ] && log "Failed to create /usr/local/bin/smartmon.py" "ERROR"
 
-        # github https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/commit/a2b43e19be1e64c31b626ca827506977cac93488
-        # Added PR #246
+        # https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/pull/255
+        # Added PR #255
         cat << 'EOF' >> /usr/local/bin/nvme_metrics.py
 #!/usr/bin/env python3
 
@@ -1116,12 +1116,21 @@ def exec_nvme_json(*args, has_verbose):
     # be verbose. Older versions of nvme-cli optionally produced verbose output if the --verbose
     # flag was specified. In order to avoid having to handle two different JSON schemas, always
     # add the --verbose flag.
-    # Note2: nvme-cli 2.3 that ships with Debian 12 has no verbose parameter for smart-log command only
+    # Note2: nvme-cli 2.3 that ships with Debian 12 has
+    # no verbose parameter for smart-log command only
 
-    if "smart-log" in args and not has_verbose:
-        output = exec_nvme(*args, "--output-format", "json")
-    else:
-        output = exec_nvme(*args, "--output-format", "json", "--verbose")
+    try:
+        if "smart-log" in args and not has_verbose:
+            output = exec_nvme(*args, "--output-format", "json")
+        else:
+            output = exec_nvme(*args, "--output-format", "json", "--verbose")
+    except subprocess.CalledProcessError as exc:
+        try:
+            output = json.loads(exc.output)
+            if "Failed to scan topology" in output["error"]:
+                return {"Devices": []}
+        except json.JSONDecodeError:
+            raise ValueError("Cannot parse nvme binary output")
     return json.loads(output)
 
 

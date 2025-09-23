@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Simplehelp Installer 2024012801 for RHEL9
+## Simplehelp Installer 2025092301 for RHEL9
 
 # Requirements:
 # RHEL9 installed
@@ -38,9 +38,11 @@ cd /opt 2>> "${LOG_FILE}" || log_quit "Cannot change to /opt"
 curl --output service.tar "${SIMPLEHELP_URL}" || log_quit "Cannot download service.tar"
 tar -xf service.tar 2>> "${LOG_FILE}" || log_quit "Cannot extract service.tar"
 ./Remote\ Access-linux64-offline /S /NAME=AUTODETECT /HOST="${HOST}"
-shred -vzu service.tar Remote\ Access-linux64-offline || log "Cannot shred service.tar or Remote Access-linux64-offline" "ERROR"
+
 # Arbitrary time to wait for Simplehelp service to start properly
 sleep 10
+shred -vzu service.tar Remote\ Access-linux64-offline || log "Cannot shred service.tar or Remote Access-linux64-offline" "ERROR"
+
 
 echo "/opt/JWrapper-Remote Access" > /etc/statetab.d/simplehelp 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/simplehelp" "ERROR"
 

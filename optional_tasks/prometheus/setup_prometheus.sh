@@ -317,7 +317,7 @@ ORG=prometheus
 REPO=blackbox_exporter
 BINARIES=(blackbox_exporter)
 FIREWALL_PORTS=()
-OPT_FILES=(blackbox.yml)
+OPT_FILES=(blackbox_exporter.yml)
 LAST_VERSION=$(get_latest_git_release "${ORG}" "${REPO}")
 ARCHIVE_NAME=$(get_git_archive_name "${ORG}" "${REPO}" "${BINARY_ARCH}")
 DOWNLOAD_LINK=$(get_git_download_link "${ORG}" "${REPO}" "${BINARY_ARCH}")
@@ -346,7 +346,7 @@ After=network-online.target
 [Service]
 User=prometheus
 Restart=on-failure
-ExecStart=/usr/local/bin/blackbox_exporter --config.file='/etc/prometheus/blackbox.yml'
+ExecStart=/usr/local/bin/blackbox_exporter --config.file='/etc/prometheus/blackbox_exporter.yml'
 Restart=always
 RestartSec=60s
 Nice=-18

@@ -419,9 +419,9 @@ if [ $? -eq 0 ]; then
         # We need to update after installing epel-release since it will update various packages
         dnf update -4 -y 2>> "${LOG_FILE}" || log "Failed to update system after epel-release install" "ERROR"
         # The following packages are epel dependent
-        # WIP: RHEL 10 ha no atop nor nmon for the moment
+        # WIP: RHEL 10 has no atop package at the moment
         if [ "${RELEASE}" -eq 10 ]; then
-            available_packages="htop iftop iptraf"
+            available_packages="htop nmon iftop iptraf"
         else
             available_packages="htop atop nmon iftop iptraf"
         fi

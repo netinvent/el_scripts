@@ -1686,7 +1686,7 @@ cpupower idle-set -D 50
 EOF
         [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-perf/script.sh" "ERROR"
 
-        chmod +x /etc/tuned/{el-eco,el-perf}/script.sh 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
+        chmod +x "${TUNED_DIR}/{el-eco,el-perf}/script.sh" 2>> "${LOG_FILE}" || log "Failed to chmod on tuned scripts" "ERROR"
     fi
 else
     log "This is a virtual machine. We will not setup hardware tooling"

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-## OPNSense Installer 2024110501 for RHEL9 with PCI passthrough preconfigured
+## OPNSense Installer 2025092301 for RHEL9 with PCI passthrough preconfigured
 
 # Requirements:
 # RHEL9 installed with NPF hypervisor script
 
 IMAGE_DIR=/data
+OPNSENSE_MIRROR="https://mirror.ams1.nl.leaseweb.net/opnsense/releases/"
 
 # VM Configuration
 VCPUS=6
@@ -75,12 +76,12 @@ fi
 
 cd "${IMAGE_DIR}" 2>> "${LOG_FILE}" || log_quit "Cannot cd to ${IMAGE_DIR}"
 log "Downloading OPNsense image"
-aria2c "https://mirror.ams1.nl.leaseweb.net/opnsense/releases/$2/OPNsense-$2-dvd-amd64.iso.bz2"
+aria2c "${OPNSENSE_MIRROR}/$2/OPNsense-$2-dvd-amd64.iso.bz2"
 if [ $? -ne 0 ]; then
     log_quit "Failed to download OPNSense v$2"
 fi
 
-curl -OL "https://mirror.ams1.nl.leaseweb.net/opnsense/releases/$2/OPNsense-$2-checksums-amd64.sha256"
+curl -OL "${OPNSENSE_MIRROR}/$2/OPNsense-$2-checksums-amd64.sha256"
 if [ $? -ne 0 ]; then
     log_quit "Failed to download OPNSense v$2 checksums"
 fi

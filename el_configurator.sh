@@ -468,8 +468,8 @@ if [ ${IS_VIRTUAL} != true ]; then
             # As of 2025-09-23, there is no python3-prometheus_client package so we have to bootstrap in from python on RHEL10
             if [ "${RELEASE}" -eq 10 ]; then
                 dnf install -y python3-pip 2>> "${LOG_FILE}" || log "Failed to install python3 and pip3" "ERROR"
-                python3 -m pip install --upgrade pip setuptools wheel 2>> "${LOG_FILE}" || log "Failed to upgrade pip3" "ERROR"
-                python3 -m pip install prometheus_client 2>> "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
+                python3 -m pip install --root-user-action ignore --upgrade pip setuptools wheel 2>> "${LOG_FILE}" || log "Failed to upgrade pip3" "ERROR"
+                python3 -m pip install --root-user-action ignore prometheus_client 2>> "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
             else
                 dnf install -y python3-prometheus_client 2>> "${LOG_FILE}" || log "Failed to add prometheus_client lib" "ERROR"
             fi

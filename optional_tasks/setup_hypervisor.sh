@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2025032701 for RHEL9/10
+## Hypervisor Installer 2025092301 for RHEL9/10
 
 # Requirements:
-# RHEL9
+# RHEL9 / 10
 # System partition 30G for system
 
 # optional, setup_hypervisor.conf file with variable overrides
@@ -58,6 +58,55 @@ function log_quit {
     exit 1
 }
 
+get_el_version() {
+    if [ -f /etc/os-release ]; then
+        # DIST must contain "rhel", "almalinux", "debian" or alike
+	# The following awk line has been tested on almalinux 8, rhel 10 and debian 12
+        DIST=$(awk '{ if ($1~/^ID=/) { sub("ID=","", $0); gsub("\"","", $0); print tolower($0) }}' /etc/os-release)
+        RELEASE=0
+        if grep 'ID="rhel"' /etc/os-release > /dev/null || grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
+            FLAVOR=rhel
+	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
+                RELEASE=10
+		        SYSTEMD_PREFIX=/usr/lib/systemd
+            elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
+                RELEASE=9
+		        SYSTEMD_PREFIX=/etc/systemd
+            elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
+                RELEASE=8
+		        SYSTEMD_PREFIX=/etc/systemd
+            else
+                log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
+            fi
+            if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ] || [ "${RELEASE}" -eq 10 ]; then
+                log "Found Linux ${DIST} release ${RELEASE}"
+            else
+                log_quit "Debian or alive release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
+            fi
+        elif grep 'ID=*debian*' /etc/os-release > /dev/null; then
+            FLAVOR=debian
+            if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
+                RELEASE=11
+		        SYSTEMD_PREFIX=/etc/systemd
+            elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
+                RELEASE=12
+		        SYSTEMD_PREFIX=/etc/systemd
+            elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
+                RELEASE=13
+		        SYSTEMD_PREFIX=/etc/systemd
+            fi
+            if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
+                log "Found Linux ${DIST} release ${RELEASE}"
+            else
+                log_quit "Not compatible with ${DIST} release ${RELEASE} "
+            fi
+
+        fi
+    else
+        log_quit "No /etc/os-release file found"
+    fi
+}
+
 set_conf_value() {
     # Updates a line in a configuration file
     # name=value or name    =   value (gets rewritten to name=value) if separator = '='
@@ -88,6 +137,8 @@ set_conf_value() {
 	fi
 }
 
+get_el_version
+
 log "#### Installing prerequisites ####"
 
 dnf install -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel release" "ERROR"
@@ -96,11 +147,20 @@ dnf install -y virt-what tar bzip2 2>> "${LOG_FILE}" || log "Failed to install s
 dnf install -y qemu-kvm libvirt virt-install bridge-utils libguestfs-tools guestfs-tools cockpit cockpit-machines 2>> "${LOG_FILE}" || log "Failed to install KVM" "ERROR"
 dnf install -y cockpit cockpit-machines 2>> "${LOG_FILE}" || log "Failed to install cockpit" "ERROR"
 dnf install -y pcp 2>> "${LOG_FILE}" || log "pcp" "ERROR"
-dnf install -y cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install cockpit-pcp" "ERROR"
+# RHEL 10 does not need cockpit-pcp anymore, but python3-pcp
+if [ "${RELEASE}" -eq 10 ]; then
+    dnf install -y python3-pcp 2>> "${LOG_FILE}" || log "Failed to install python3-pcp" "ERROR"
+else
+    dnf install -y cockpit-pcp 2>> "${LOG_FILE}" || log "Failed to install cockpit-pcp" "ERROR"
+fi
 dnf install -y openssl 2>> "${LOG_FILE}" || log "Failed to install openssl" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
 dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"
+log "Disabling upower that comes with virt-manager for whatever reason"
+systemctl stop upower 2>> "${LOG_FILE}" || log "Failed to stop upower" "ERROR"
+systemctl disable upower 2>> "${LOG_FILE}" || log "Failed to disable upower" "ERROR"
+
 
 log "#### System tuning ####"
 # Don't log martian packets, obviously we'll get plenty

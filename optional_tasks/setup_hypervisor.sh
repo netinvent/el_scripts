@@ -92,7 +92,7 @@ get_el_version() {
                 RELEASE=12
 		        #SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
-                #RELEASE=13
+                RELEASE=13
 		        #SYSTEMD_PREFIX=/etc/systemd
             fi
             if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then

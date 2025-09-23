@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2025040101 for RHEL9
+## Readonly setup script 2025092301 for RHEL9
 
 # Requirements:
 # RHEL9 installed
@@ -178,7 +178,7 @@ grub2-mkconfig -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "Cannot update g
     if ($1 ~ "^#" || $1 == "") { print $0; next };                                  # Skip commented / empty lines
     if ($3 ~ "swap") { print $0; next };                                            # Skip swap FS
     if ($3 ~ "fat") { next };                                                       # Skip fat (vfat) FS (efi)
-    if ($2 ~ "images") { $4="defaults,rw,noexec,nosuid,nodev"; print $0; next };    # Change defaults to /*/images mountpoints
+    if ($2 ~ "/data") { $4="defaults,rw,noexec,nosuid,nodev,noatime,nodiratime"; print $0; next };    # Change defaults to /data mountpoints
     if ($2 != "/" && $4 !~ "noexec") { $4=$4",noexec" };                            # Add noexec to all except /
     if ($2 != "/" && $4 !~ "nosuid") { $4=$4",nosuid" };                            # Add nosuid to all except /
     if ($2 != "/" && $4 !~ "nodev") { $4=$4",nodev" };                              # Add nodev to all except /

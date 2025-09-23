@@ -356,9 +356,9 @@ if [ "${SCAP_PROFILE}" != false ]; then
     if [ $? -eq 0 ]; then
         # Let's reinstall openscap in case we're running this script on a non prepared machine
         if [ "${FLAVOR}" = "rhel" ]; then
-            dnf install -y openscap scap-security-guide 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            dnf install -y openscap scap-security-guide 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         elif [ "${FLAVOR}" = "debian" ]; then
-            apt install -y openscap-utils ssg-base ssg-debderived ssg-debian ssg-applications 2> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            apt install -y openscap-utils ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi

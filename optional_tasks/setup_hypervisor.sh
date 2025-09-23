@@ -68,13 +68,13 @@ get_el_version() {
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
                 RELEASE=10
-		        SYSTEMD_PREFIX=/usr/lib/systemd
+		        #SYSTEMD_PREFIX=/usr/lib/systemd
             elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
-		        SYSTEMD_PREFIX=/etc/systemd
+		        #SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
-		        SYSTEMD_PREFIX=/etc/systemd
+		        #SYSTEMD_PREFIX=/etc/systemd
             else
                 log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
@@ -87,13 +87,13 @@ get_el_version() {
             FLAVOR=debian
             if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
                 RELEASE=11
-		        SYSTEMD_PREFIX=/etc/systemd
+		        #SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
                 RELEASE=12
-		        SYSTEMD_PREFIX=/etc/systemd
+		        #SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
-                RELEASE=13
-		        SYSTEMD_PREFIX=/etc/systemd
+                #RELEASE=13
+		        #SYSTEMD_PREFIX=/etc/systemd
             fi
             if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"

@@ -132,8 +132,8 @@ done
 qemu-img create -f qcow2 -o extended_l2=on -o preallocation=metadata "${FULL_DISKPATH}" "${DISK_SIZE}" 2>> "${LOG_FILE}" || log_quit "Failed to create disk"
 chown qemu:qemu "${FULL_DISKPATH}" 2>> "${LOG_FILE}" || log "Failed to change disk owner" "ERROR"
 cmd='virt-install --name "'${VM}'" --ram "'${RAM}'" --vcpus "'${VCPUS}'" --cpu host --os-variant "'${OS_VARIANT}'" --disk path="'${FULL_DISKPATH}'",bus=virtio,cache=none'${IO_MODE}' --channel unix,mode=bind,target_type=virtio,name=org.qemu.guest_agent.0 --sound none --boot hd --autostart --sysinfo smbios,bios.vendor=npf --sysinfo smbios,system.manufacturer=NetPerfect --sysinfo smbios,system.product="'${PRODUCT}'" --cdrom "'${ISO}'" --graphics vnc,listen=127.0.0.1,keymap=fr --autoconsole text '${PCI_PASSTHROUGH}''
-echo $cmd
-eval $cmd
+echo "$cmd"
+eval "$cmd"
 [ $? -ne 0 ] && log "Failed to launch virt-install" "ERROR"
 
 if [ "${SCRIPT_GOOD}" == false ]; then

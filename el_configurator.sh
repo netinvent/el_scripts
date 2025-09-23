@@ -416,6 +416,8 @@ if [ $? -eq 0 ]; then
     if  [ "${FLAVOR}" = "rhel" ]; then
         dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
         dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
+        # We need to update after installing epel-release since it will update various packages
+        dnf update -4 -y 2>> "${LOG_FILE}" || log "Failed to update system after epel-release install" "ERROR"
         # The following packages are epel dependent
         # WIP: RHEL 10 ha no atop nor nmon for the moment
         if [ "${RELEASE}" -eq 10 ]; then

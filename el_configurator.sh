@@ -1829,7 +1829,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
             log "Adding whitelisted IPs to firewalld in trusted zone"
             # shellcheck disable=SC2086
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                firewall-cmd --permanent --zone=trusted ---add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
+                firewall-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
             done
         fi
         systemctl start firewalld

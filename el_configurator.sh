@@ -1992,8 +1992,8 @@ if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
         # chmod 4111 /usr/bin/sudo is not needed on RHEL normally
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
-        chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     fi
+    chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
 else
     log "Not altering sudo behavior"

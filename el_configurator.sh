@@ -390,8 +390,8 @@ if [ "${SCAP_PROFILE}" != false ]; then
         setsebool -P secure_mode_insmod=off || log "Cannot set secure_mode_insmod to off" "ERROR"
     fi
 
-    # Fix ssh logins don't work with RHEL 9.6 after anssi_bp28_high
-    if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ] && [ "${RELEASE}" -eq 9 ]; then
+    # Fix ssh logins don't work with RHEL 9.6 and RHEL 10 after anssi_bp28_high
+    if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ] && [ "${RELEASE}" -ge 9 ]; then
         log "Fixing sshd not working after anssi_bp28_high profile on ${FLAVOR} ${RELEASE}"
         setsebool -P polyinstantiation_enabled 1 || log "Cannot configure SELinux polyinstantiation_enabled to 1" "ERROR"
     fi

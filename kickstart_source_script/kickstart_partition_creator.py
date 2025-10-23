@@ -90,7 +90,7 @@ PARTS_HV_STATELESS = [
 ]
 
 # Partition schema for stateless machines
-PARTS_STATELSSS = [
+PARTS_STATELESS = [
     {"size": True, "fs": "xfs", "mountpoint": "/"},
     {"size": True, "fs": "xfs", "mountpoint": None, "label": "STATEFULRW"},
 ]
@@ -163,7 +163,7 @@ def get_kernel_arguments() -> dict:
         result, output = dirty_cmd_runner(cmd)
         if result:
             argument_value = output.split("\n")[0].strip()
-            if argument_value is not "":
+            if argument_value != "":
                 logger.info(f"Found kernel argument {argument_name}={argument_value}")
                 return argument_value
         return None
@@ -809,7 +809,7 @@ if TARGET == "hv":
 elif TARGET == "hv-stateless":
     PARTS = PARTS_HV_STATELESS
 elif TARGET == "stateless":
-    PARTS = PARTS_STATELSSS
+    PARTS = PARTS_STATELESS
 elif TARGET == "generic":
     PARTS = PARTS_GENERIC
 elif TARGET == "web":

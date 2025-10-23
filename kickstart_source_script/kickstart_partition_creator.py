@@ -208,7 +208,7 @@ def get_mem_size() -> int:
     return mem_mib
 
 
-def get_first_disk_path() -> list:
+def get_first_disk_path() -> str:
     """
     Return list of disks
 

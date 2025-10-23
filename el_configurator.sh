@@ -1845,7 +1845,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
             done
         else
             Log "Adding generic SSH port permission to ufw so we can work"
-                /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"*
+                /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
         fi
     fi
 fi

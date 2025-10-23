@@ -1800,7 +1800,7 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
         systemctl enable unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to enable unattended-upgrades" "ERROR"
         systemctl enable apt-daily-upgrade.timer 2>> "${LOG_FILE}" || log "Failed to enable apt-daily-upgrade.timer" "ERROR"
     else
-        log_quit "Cannot setup automatic updates on this system. Looks unsupporte"
+        log_quit "Cannot setup automatic updates on this system. Looks unsupported"
     fi
 fi
 
@@ -1844,8 +1844,8 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
                 /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
             done
         else
-            Log "Adding generic SSH port permission to ufw so we can work"
-                /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+            log "Adding generic SSH port permission to ufw so we can work"
+            /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
         fi
     fi
 fi
@@ -1854,7 +1854,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
     log "Setting up fail2ban"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y fail2ban 2>> "${LOG_FILE}"
-        if [ $? != 0 ]; then
+        if [ $? -ne 0 ]; then
     	    log "Failed to install fail2ban" "ERROR"
     	    FAIL2BAN_INSTALLED=false
      	else
@@ -1862,13 +1862,13 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y fail2ban 2>> "${LOG_FILE}"
-    if [ $? != 0 ]; then
+    if [ $? -ne 0 ]; then
     	log "Failed to install fail2ban" "ERROR"
    		FAIL2BAN_INSTALLED=false
 	else
     	FAIL2BAN_INSTALLED=true
         # On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
-        if [ "${RELEASE}" = 12 ]; then
+        if [ "${RELEASE}"  12 ]; then
             sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
         fi
 	fi

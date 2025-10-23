@@ -288,7 +288,7 @@ set_conf_value() {
     # sed separator can be changed to any other character as long as it's not used
     # if not used, we'll go for the SOH character
     sed_separator="${5:-false}"
-    if [ "${sed_separator}" == false ]; then
+    if [ "${sed_separator}" = false ]; then
         sed_separator=$(echo -en "\001")
     fi
 
@@ -462,7 +462,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
     systemctl enable smartd 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
-    if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" == true ]; then
+    if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"
         if [ "${FLAVOR}" = "rhel" ]; then
             # As of 2025-09-23, there is no python3-prometheus_client package so we have to bootstrap in from python on RHEL10
@@ -1874,7 +1874,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 	 fi
     fi
 
-    if [ "${FAIL2BAN_INSTALLED}" == true ]; then
+    if [ "${FAIL2BAN_INSTALLED}" = true ]; then
 	    # Enable SSHD jail by adding a local jail conf file
 	    ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
 	    if [ ! -f "${ssh_jailfile}" ]; then

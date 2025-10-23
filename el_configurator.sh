@@ -260,7 +260,7 @@ check_internet() {
     for host in ${ip_hosts[@]}; do
         ping -c2 "${host}" > /dev/null 2>&1
         if [ $? -eq 0 ]; then
-            log "IP check to ${host} works."
+            log "IP check to ${host} works, but dns resolution doesn't seem to."
             return 1
         fi
     done

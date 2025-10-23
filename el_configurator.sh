@@ -57,7 +57,7 @@ CONFIGURE_SERIAL_TERMINAL=true
 # Add resize_term and resize_term2 scripts to /etc/profile.d
 CONFIGURE_TERMINAL_RESIZER=true
 
-# Installa and configure node_exporter
+# Install and configure node_exporter
 CONFIGURE_NODE_EXPORTER=true
 NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
 # Setup python smartmontools / nvme tooling for prometheus
@@ -81,7 +81,7 @@ CONFIGURE_TUNED=true
 # Install and configure firewall
 CONFIGURE_FIREWALL=true
 
-# Optional whihtelist IPs / CIDR for firewall
+# Optional whitelist IPs / CIDR for firewall
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
 
@@ -91,7 +91,7 @@ CONFIGURE_FAIL2BAN=true
 # Optional whitelist IPs / CIDR for Fail2ban
 FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
-# Optionl allow non protected fs symlinks
+# Optional allow non protected fs symlinks
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
 ALLOW_UNPROTECTED_FS_SYMLINKS=false
 
@@ -1528,7 +1528,7 @@ EOF
             TUNED_DIR=/etc/tuned
         fi
         [ ! -d "${TUNED_DIR}/el-eco" ] && mkdir -p "${TUNED_DIR}/el-eco"
-        [ ! -d "${TUNED_DIR}/el-perf" ]&& mkdir -p "${TUNED_DIR}/el-perf"
+        [ ! -d "${TUNED_DIR}/el-perf" ] && mkdir -p "${TUNED_DIR}/el-perf"
 
         cat << 'EOF' > "${TUNED_DIR}/el-eco/tuned.conf"
 [main]

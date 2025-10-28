@@ -878,7 +878,7 @@ if not write_kickstart_partitions_file(partitions_schema):
     logger.critical(f"Error {errno}")
     sys.exit(errno)
 
-logger.info("partitioning done. Please use '%include /tmp/partitions")
+logger.info(r"partitioning done. Please use '%include /tmp/partitions")
 
 if not setup_package_lists():
     errno=10

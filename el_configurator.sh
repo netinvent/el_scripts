@@ -363,18 +363,20 @@ if [ "${SCAP_PROFILE}" != false ]; then
             if [ "${RELEASE}" -ge 12 ]; then
                 log "Downloading up ssg openscap data for debian 12+"
                 if type curl > /dev/null 2>&1; then
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
-                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with curl" "ERROR"
-                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
+                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with curl" "ERROR"
+                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with curl" "ERROR"
                 else
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
-                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with wget" "ERROR"
-                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
+                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with wget" "ERROR"
+                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with wget" "ERROR"
                 fi
-                dpkg -i ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
-                dpkg -i ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
+                dpkg -i ssg-base_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
+                dpkg -i ssg-debian_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
+                dpkg -i ssg-applications_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be installed" "ERROR"
+                dpkg -i ssg-debderived_0.1.78-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be installed" "ERROR"
             else
                 apt install -y ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" || log "ssg tools are missing and cannot be installed" "ERROR"
             fi

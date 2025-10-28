@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025092301"
+SCRIPT_BUILD="2025102801"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -358,7 +358,26 @@ if [ "${SCAP_PROFILE}" != false ]; then
         if [ "${FLAVOR}" = "rhel" ]; then
             dnf install -y openscap scap-security-guide 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
         elif [ "${FLAVOR}" = "debian" ]; then
-            apt install -y openscap-utils ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            log "Installing openscap utils"
+                apt install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            if [ "${RELEASE}" -ge 12 ]; then
+                log "Downloading up ssg openscap data for debian 12+"
+                if type curl > /dev/null 2>&1; then
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
+                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
+                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with curl" "ERROR"
+                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with curl" "ERROR"
+                else
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
+                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
+                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with wget" "ERROR"
+                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.78-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with wget" "ERROR"
+                fi
+                dpkg -i ssg-base_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
+                dpkg -i ssg-debian_0.1.76-1_all.deb 2> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
+            else
+                apt install -y ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" || log "ssg tools are missing and cannot be installed" "ERROR"
+            fi
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi

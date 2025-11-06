@@ -396,23 +396,23 @@ if [ "${SCAP_PROFILE}" != false ]; then
             log_quit "Cannot setup OpenSCAP on this system"
         fi
         log "Setting up scap profile with remote resources"
-        oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
         # result 2 is partially applied, which can be normal
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results with remote resources"
-            oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     else
         log "Setting up scap profile without internet"
-        oscap xccdf eval --profile ${SCAP_PROFILE} --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results without internet"
-            oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     fi

@@ -342,12 +342,11 @@ IPv6 \6
 
 EOF
 
-# Add /etc/issue.net file or remote login banners (CIS 1.7.3)
+# Apply CIS 1.7.3 Add /etc/issue.net file or remote login banners with minimal sys info
 cat << EOF > /etc/issue.net
 ${BRAND_NAME}
 
 ${REMOTE_LOGIN_BANNER}
-
 EOF
 
 check_internet

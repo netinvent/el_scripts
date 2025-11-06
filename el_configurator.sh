@@ -14,7 +14,7 @@ BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 BRAND_VER=5.0
 
-MOTD_MSG=$(cat << 'EOF'
+REMOTE_LOGIN_BANNER=$(cat << 'EOF'
  ___________________________________________________
 / UNAUTHORIZED ACCESS TO THIS DEVICE IS PROHIBITED  \
 |                                                   |
@@ -26,6 +26,11 @@ MOTD_MSG=$(cat << 'EOF'
 | logged and monitored.                             |
 \                                                   /
  ---------------------------------------------------
+EOF
+)
+
+MOTD_MSG=$(cat << 'EOF'
+___REMOTE_LOGIN_BANNER_DO_NOT_DELETE___
          \   ^__^
           \  (oo)\_______
              (__)\       )\/\
@@ -334,6 +339,14 @@ ${BRAND_NAME} ${EL_NAME}
 
 IPv4 \4
 IPv6 \6
+
+EOF
+
+# Add /etc/issue.net file or remote login banners (CIS 1.7.3)
+cat << EOF > /etc/issue.net
+${BRAND_NAME}
+
+${REMOTE_LOGIN_BANNER}
 
 EOF
 
@@ -2020,6 +2033,17 @@ else
     log "Not altering sudo behavior"
 fi
 
+# Apply CIS 5.1.2-5.1.5
+for file in /etc/crontab /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly; do
+    if [ ! -e "${file}" ]; then
+        log "File ${file} does not exist, skipping CIS 5.1.2-5.1.5"
+        continue
+    fi
+    log "Applying CIS 5.1.2-5.1.5 on ${file}"
+    chown root:root "${file}" 2>> "${LOG_FILE}" || log "Failed to chown root:root ${file}" "ERROR"
+    chmod og-rwx "${file}" 2>> "${LOG_FILE}" || log "Failed to chmod og-rwx ${file}" "ERROR"
+done
+
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
     MOTD_STATUS="___EL POST SCRIPT: FAILURE___"
@@ -2027,6 +2051,7 @@ else
     MOTD_STATUS="___EL POST SCRIPT: SUCCESS___"
 fi
 echo "${MOTD_MSG}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
+sed -i "s/___REMOTE_LOGIN_BANNER_DO_NOT_DELETE___/${REMOTE_LOGIN_BANNER}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set remote login banner in /etc/motd" "ERROR"
 sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"
 
 

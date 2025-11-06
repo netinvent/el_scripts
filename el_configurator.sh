@@ -2032,6 +2032,12 @@ else
     log "Not altering sudo behavior"
 fi
 
+# Apply CIS 5.3.3
+set_conf_value /etc/sudoers "Defaults logfile" "/var/log/sudo.log" "="
+
+# Apply CIS 5.3.6
+set_conf_value /etc/sudoers "Defaults timestamp_timeout" "15" "="
+
 # Apply CIS 1.1.1.1,1.1.1.1,1.1.9
 if [ -d /etc/modprobe.d ]; then
     log "Applying CIS 1.1.1.1,1.1.1.2,1.1.9"

@@ -30,7 +30,6 @@ EOF
 )
 
 MOTD_MSG=$(cat << 'EOF'
-___REMOTE_LOGIN_BANNER_DO_NOT_DELETE___
          \   ^__^
           \  (oo)\_______
              (__)\       )\/\
@@ -2124,8 +2123,8 @@ if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
 else
     MOTD_STATUS="___EL POST SCRIPT: SUCCESS___"
 fi
-echo "${MOTD_MSG}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
-sed -i "s/___REMOTE_LOGIN_BANNER_DO_NOT_DELETE___/${REMOTE_LOGIN_BANNER}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set remote login banner in /etc/motd" "ERROR"
+echo "${REMOTE_LOGIN_BANNER}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
+echo "${MOTD_MSG}" >> /etc/motd 2>> "${LOG_FILE}" || log "Failed to add cow to /etc/motd" "ERROR"
 sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"
 
 

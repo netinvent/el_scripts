@@ -12,6 +12,7 @@ SCRIPT_BUILD="2025102801"
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
+ISSUE_MESSAGE_EXTRA="- Private System" # Will be displayed with BRAND_NAME in /etc/issue.net
 BRAND_VER=5.0
 
 REMOTE_LOGIN_BANNER=$(cat << 'EOF'
@@ -365,8 +366,7 @@ EOF
 
 # Apply CIS 1.7.3 Add /etc/issue.net file or remote login banners with minimal sys info
 cat << EOF > /etc/issue.net
-${BRAND_NAME}
-
+${BRAND_NAME} ${ISSUE_MESSAGE_EXTRA}
 ${REMOTE_LOGIN_BANNER}
 EOF
 

@@ -80,6 +80,9 @@ CONFIGURE_NETWORK_SCHEDULING=true
 # Add client keep alives to sshd
 CONFIGURE_SSHD_CLIENT_ALIVE=true
 
+# Configure SSH CIS settings
+CONFIGURE_CIS_SSHD_SETTINGS=true
+
 # Implement tuned profiles
 CONFIGURE_TUNED=true
 
@@ -2012,9 +2015,33 @@ fi
 
 if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
     log "Adding ClientAlive settings to sshd"
-    set_conf_value /etc/ssh/sshd_config "TCPKeepAlive" "no" " "
-    set_conf_value /etc/ssh/sshd_config "ClientAliveInterval" "120" " "
-    set_conf_value /etc/ssh/sshd_config "ClientAliveCountMax" "3" " "
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "TCPKeepAlive" "no" " "
+fi
+
+if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+    # The following CIS parameters aren't applied automagically by scap profiles
+    # CIS 5.2.12
+    log "Applying CIS 5.2.12"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "X11Forwarding" "no" " "
+    # CIS 5.2.13
+    log "Applying CIS 5.2.13"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "AllowTcpForwarding" "no" " "
+    # CIS 5.2.15
+    log "Applying CIS 5.2.15"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "Banner" "/etc/issue.net" " "
+    # CIS 5.2.16
+    log "Applying CIS 5.2.16"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "MaxAuthTries" "3" " "
+    # CIS 5.2.17
+    log "Applying CIS 5.2.17"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "MaxStartups" "10:30:60" " "
+    # CIS 5.2.19
+    log "Applying CIS 5.2.19"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "LoginGraceTime" "60" " "
+    # CIS 5.2.20
+    log "Applying CIS 5.2.20"
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveInterval" "120" " "
+    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveCountMax" "3" " "
 fi
 
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then

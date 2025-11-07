@@ -2043,6 +2043,10 @@ if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
     # CIS 5.2.12
     log "Applying CIS 5.2.12"
     set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "X11Forwarding" "no" " "
+    if [ -f /etc/ssh/sshd_config.d/50-redhat.conf ]; then
+        log "Patching /etc/ssh/sshd_config.d/50-redhat.conf for CIS 5.2.12"
+        set_conf_value /etc/ssh/sshd_config.d/50-redhat.conf "X11Forwarding" "no" " "
+    fi
     # CIS 5.2.13
     log "Applying CIS 5.2.13"
     set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "AllowTcpForwarding" "no" " "
@@ -2063,6 +2067,10 @@ if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
     set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveInterval" "120" " "
     set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveCountMax" "3" " "
 fi
+
+# CIS 5.6.12
+log "Applying CIS 5.6.12"
+set_conf_value /etc/login.defs "PASS_MIN_DAYS" "0" " "
 
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"

@@ -100,17 +100,19 @@ PARTS_GENERIC = [
     {"size": True, "fs": "xfs", "mountpoint": "/"}
 ]
 
-# Partition schema for generic web servers (sized for minimum 20GiB web servers)
+# Partition schema for generic web servers (sized for minimum 23GiB web servers)
 PARTS_WEB = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/"},
     {"size": True, "fs": "xfs", "mountpoint": "/var/www", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 4096, "fs": "xfs", "mountpoint": "/var/log", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 1024, "fs": "xfs", "mountpoint": "/tmp", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 1024, "fs": "xfs", "mountpoint": "/var/tmp", "fsoptions": "nodev,nosuid,noexec"},
+    # Wazuh / ossec agent binary is in /var/ossec, so we need to remove noexec option
+    {"size": 3072, "fs": "xfs", "mountpoint": "/var/ossec", "fsoptions": "nodev,nosuid"},
 ]
 
 # Example partition schema for ANSSI-BP028 high profile
-# This example requires at least 65GiB of disk space
+# This example requires at least 68GiB of disk space
 # as it will also require swap space depending on memory size, /boot and /boot/efi space
 PARTS_ANSSI = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/"},
@@ -123,6 +125,8 @@ PARTS_ANSSI = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/var/tmp", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 10240, "fs": "xfs", "mountpoint": "/var/log", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 2048, "fs": "xfs", "mountpoint": "/var/log/audit", "fsoptions": "nodev,nosuid,noexec"},
+    # Wazuh / ossec agent binary is in /var/ossec, so we need to remove noexec option
+    {"size": 3072, "fs": "xfs", "mountpoint": "/var/ossec", "fsoptions": "nodev,nosuid"},
 ]
 
 #################################################################

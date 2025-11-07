@@ -2089,7 +2089,7 @@ set_conf_value /etc/sudoers "Defaults timestamp_timeout" "15" "="
 if [ -d /etc/modprobe.d ]; then
     log "Applying CIS 1.1.1.1,1.1.1.2,1.1.9,3.1.3"
     set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist squashfs" "" " "
-    set_conf value /etc/modprobe.d/CIS_blacklists.conf "install squashfs" "/bin/false" " "
+    set_conf_value /etc/modprobe.d/CIS_blacklists.conf "install squashfs" "/bin/false" " "
     set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist udf" "" " "
     set_conf_value /etc/modprobe.d/CIS_blacklists.conf "install udf" "/bin/false" " "
     set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist usb-storage" "" " "

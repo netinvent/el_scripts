@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025102801"
+SCRIPT_BUILD="2025110701"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -13,7 +13,7 @@ SCRIPT_BUILD="2025102801"
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
 ISSUE_MESSAGE_EXTRA="- Private System" # Will be displayed with BRAND_NAME in /etc/issue.net
-BRAND_VER=5.0
+BRAND_VER=5.1
 
 REMOTE_LOGIN_BANNER=$(cat << 'EOF'
  ___________________________________________________

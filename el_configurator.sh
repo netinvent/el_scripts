@@ -249,6 +249,25 @@ check_internet() {
     fqdn_host="one.one.one.one kernel.org github.com"
     ip_hosts="2606:4700:4700::1001 8.8.8.8 9.9.9.9"
     for host in ${fqdn_host[@]}; do
+        if type curl > /dev/null 2>&1; then
+            curl -s --connect-timeout 5 -Lk "http://${host}" > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                log "FQDN curl HTTP request to ${host} works."
+                return 0
+            else
+                log "FQDN curl HTTP request to ${host} failed."
+            fi
+        elif type wget > /dev/null 2>&1; then
+            wget -q --timeout=5 -O /dev/null "http://${host}" > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                log "FQDN wget HTTP request to ${host} works."
+                return 0
+            else
+                log "FQDN wget HTTP request to ${host} failed."
+            fi
+        else
+            log "No curl nor wget available to test internet connectivity to ${host}" "INFO"
+        fi
         ping -4 -c2 "${host}" > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             log "FQDN IPv4 echo request to ${host} works."

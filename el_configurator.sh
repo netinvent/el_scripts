@@ -2046,6 +2046,14 @@ if [ -d /etc/modprobe.d ]; then
     set_conf_value /etc/modprobe.d/CIS_1.1.x.x_blacklists.conf "blacklist usb-storage" "" " "
 fi
 
+# Apply CIS 1.5.1,1.5.2
+if [ -f /etc/systemd/coredump.conf ]; then
+    log "Applying CIS 1.5.1-,1.5.2"
+    set_conf_value /etc/systemd/coredump.conf "Storage" "none" "="
+    set_conf_value /etc/systemd/coredump.conf "ProcessSizeMax" "0" "="
+fi
+
+
 # Apply CIS 5.1.2-5.1.5
 for file in /etc/crontab /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly; do
     if [ ! -e "${file}" ]; then

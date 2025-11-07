@@ -8,12 +8,13 @@
 
 This script collection is designed to work on:
 - Redhat / AlmaLinux / RockyLinux / CentOS and other EL8, EL9 or EL10 clones
-- Debian 12
+- Debian 12 & 13
 
 
 ### Enterprise Linux configurator script
 
-The script allows to configure an existing Enterprise Linux in order to be compliant with ANSSI BP-028 profiles, and configure various enhancements. The script is already included in the kickstart file.
+The script allows to configure an existing Enterprise Linux in order to be compliant with OpenSCAP security profiles like ANSSI BP-028, configure various security enhancements and optional improved settings.  
+The script is already included in the kickstart file for Redhat systems.  On Debian, it must be run manually.
 
 To configure an existing setup, you can use the following  
 >[!WARNING]
@@ -31,27 +32,29 @@ bash ./el_configurator.sh
 ```
 
 
-Adding Prometheus node_exporter, the script will also add two new metrics:
+If Prometheus node_exporter option is installed, the script will also add two new metrics:
 - `el_configurator_setup_date` which will contain the timestamp of the last el_configurator run
 - `el_configurator_state` which will contain state (0=Success, 1=Failure/Missing) of last run
 
-The `el_configurator` script will also provide the following setups:
+The `el_configurator` script will provide the following setups:
 
-- Optional packages if physical machine
+- OpenSCAP security profile configuration
+- Various CIS security configurations
+- Optional package installation if physical machine is detected
     - pre-configured smartmontools daemon
     - Optional IT8613 support
     - Intel TCO Watchdog support
     - Tuned config profiles npf-eco and npf-perf
+- Optional package installation if virtual machine is detected
     - Qemu guest agent setup on KVM machines
 - Optional enabling serial console on tty and grub interface
     - Add `resize_term` and `resize_term2` scripts which allow to deal with tty resizing in terminal
-- Optional steps if DHCP internet is found
+- Optional steps if machine has internet
     - Installation of non standard packages
-    - ANSSI-BP028 SCAP Profile configuration with report
+    - SCAP Profile update before execution
     - Prometheus Node exporter installation
     - Setup firewall
     - Setup fail2ban for SSH
-    - Tune SSH keepalives
 - Cleanup of image after setup
 
 

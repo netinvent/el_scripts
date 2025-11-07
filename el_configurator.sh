@@ -2038,12 +2038,13 @@ set_conf_value /etc/sudoers "Defaults logfile" "/var/log/sudo.log" "="
 # Apply CIS 5.3.6
 set_conf_value /etc/sudoers "Defaults timestamp_timeout" "15" "="
 
-# Apply CIS 1.1.1.1,1.1.1.1,1.1.9
+# Apply CIS 1.1.1.1,1.1.1.1,1.1.9,3.1.3
 if [ -d /etc/modprobe.d ]; then
-    log "Applying CIS 1.1.1.1,1.1.1.2,1.1.9"
-    set_conf_value /etc/modprobe.d/CIS_1.1.x.x_blacklists.conf "blacklist squashfs" "" " "
-    set_conf_value /etc/modprobe.d/CIS_1.1.x.x_blacklists.conf "blacklist udf" "" " "
-    set_conf_value /etc/modprobe.d/CIS_1.1.x.x_blacklists.conf "blacklist usb-storage" "" " "
+    log "Applying CIS 1.1.1.1,1.1.1.2,1.1.9,3.1.3"
+    set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist squashfs" "" " "
+    set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist udf" "" " "
+    set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist usb-storage" "" " "
+    set_conf_value /etc/modprobe.d/CIS_blacklists.conf "blacklist tipc" "" " "
 fi
 
 # Apply CIS 1.5.1,1.5.2

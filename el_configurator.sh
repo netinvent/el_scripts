@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025110701"
+SCRIPT_BUILD="2025111401"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -515,6 +515,13 @@ if [ ${IS_VIRTUAL} != true ]; then
         apt install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
         SMARTD_CONF_FILE=/etc/smartd.conf
     fi
+
+    if [ ! -f "${SMARTD_CONF_FILE}" ]; then
+        log "Cannot find smartd configuration file at ${SMARTD_CONF_FILE}" "ERROR"
+    fi
+    # Deactivate any existing DEVICESCAN entries since only the first one gets executed
+    sed -i 's/^DEVICESCAN/# DEVICESCAN/g' "${SMARTD_CONF_FILE}" >> "${LOG_FILE}" 2>&1
+    # Add our basic devicescan entry
     echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
     systemctl enable smartd 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 

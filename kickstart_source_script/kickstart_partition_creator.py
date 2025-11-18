@@ -6,14 +6,14 @@ __intname__ = "kickstart.partition_script.RHEL9-10"
 __author__ = "Orsiris de Jong"
 __copyright__ = "Copyright (C) 2022-2025 Orsiris de Jong - NetInvent SASU"
 __licence__ = "BSD 3-Clause"
-__build__ = "2025110701"
+__build__ = "2025111801"
 
-### This is a pre-script for kickstart files in RHEL 9
+### This is a pre-script for kickstart files in RHEL 9-10
 ### Allows specific partition schemes with one or more data partitions
 # Standard partitioning scheme is
-# | (efi) | boot | root | data 1 | data part n | swap
+# | (biosboot) | (efi) | boot | root | data 1 | data part n | swap
 # LVM partitioning scheme is
-# | (efi) | boot | lv [data 1| data part n | swap]
+# | (biosboot) | (efi) | boot | lv [data 1| data part n | swap]
 
 ## Possible partitioning targets
 # generic: One big root partition
@@ -25,10 +25,15 @@ __build__ = "2025110701"
 TARGET = "anssi"
 
 # Reserve 5% of disk space on physical machines, useful for SSD disks
-# Set to 0 to disable
+# Set to 0 to disable, does not work with LVM
 REDUCE_PHYSICAL_DISK_SPACE = 5
 
+# Prefer using GPT partition schema even on non UEFI systems
+# On non UEFI systems, this will create a 1MB partition of type biosboot in order to boot uefi from there
+FORCE_GPT = True
+
 # Enable LVM partitioning (if using stateless partition profiles, this will be automatically disabled)
+# If you have a partition schema with more than 4 partitions, you should consider using LVM or FORCE_GPT since MBR only supports 4 primary partitions
 LVM_ENABLED = True
 # LVM volume group name
 VG_NAME = "vg00"
@@ -112,7 +117,8 @@ PARTS_WEB = [
 ]
 
 # Example partition schema for ANSSI-BP028 high profile
-# This example requires at least 68GiB of disk space
+# This example requires at least 60GiB of disk space
+# The remaining space will be filled by /var partition
 # as it will also require swap space depending on memory size, /boot and /boot/efi space
 PARTS_ANSSI = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/"},
@@ -123,7 +129,7 @@ PARTS_ANSSI = [
     {"size": 5120, "fs": "xfs", "mountpoint": "/tmp", "fsoptions": "nodev,nosuid,noexec"},
     {"size": True, "fs": "xfs", "mountpoint": "/var", "fsoptions": "nodev"},
     {"size": 5120, "fs": "xfs", "mountpoint": "/var/tmp", "fsoptions": "nodev,nosuid,noexec"},
-    {"size": 10240, "fs": "xfs", "mountpoint": "/var/log", "fsoptions": "nodev,nosuid,noexec"},
+    {"size": 6144, "fs": "xfs", "mountpoint": "/var/log", "fsoptions": "nodev,nosuid,noexec"},
     {"size": 2048, "fs": "xfs", "mountpoint": "/var/log/audit", "fsoptions": "nodev,nosuid,noexec"},
     # Wazuh / ossec agent binary is in /var/ossec, so we need to remove noexec option
     {"size": 3072, "fs": "xfs", "mountpoint": "/var/ossec", "fsoptions": "nodev,nosuid"},
@@ -186,16 +192,15 @@ def get_kernel_arguments() -> dict:
     return kernel_arguments
 
 
-def is_gpt_system() -> bool:
+def is_uefi_system() -> bool:
     if DEV_MOCK:
         return True
-    is_gpt = os.path.exists("/sys/firmware/efi")
-    if is_gpt:
+    is_uefi = os.path.exists("/sys/firmware/efi")
+    if is_uefi:
         logger.info("We're running on a UEFI machine")
     else:
         logger.info("We're running on a MBR machine")
-    return is_gpt
-
+    return is_uefi
 
 def get_mem_size() -> int:
     """
@@ -265,12 +270,12 @@ def init_disk(disk_path: str) -> bool:
     """
     Create disk label
     """
-    if IS_GPT:
+    if IS_UEFI_SYSTEM or FORCE_GPT:
         label = "gpt"
     else:
         label = "msdos"
     cmd = f"parted -s {disk_path} mklabel {label}"
-    logger.info(f"Making {disk_path} label")
+    logger.info(f"Making {label} label on disk {disk_path}")
     if DEV_MOCK:
         return True
     result, output = dirty_cmd_runner(cmd)
@@ -327,14 +332,22 @@ def get_partition_schema(selected_partition_schema: dict) -> dict:
         swap_size = int(mem_size / 2)
 
     def create_partition_schema():
-        if IS_GPT:
+        """
+        Partition indexes begin with 1 in order to match parted/fdisk counting
+        """
+        if IS_UEFI_SYSTEM:
             partitions_schema = {
-                "0": {"size": 600, "fs": "fat32", "mountpoint": "/boot/efi"},
-                "1": {"size": 1024, "fs": "xfs", "mountpoint": "/boot"},
+                "1": {"size": 600, "fs": "fat32", "mountpoint": "/boot/efi"},
+                "2": {"size": 1024, "fs": "xfs", "mountpoint": "/boot"},
+            }
+        elif not IS_UEFI_SYSTEM and FORCE_GPT:
+            partitions_schema = {
+                "1": {"size": 1, "fs": "biosboot", "mountpoint": "biosboot"},
+                "2": {"size": 1024, "fs": "xfs", "mountpoint": "/boot"}
             }
         else:
             partitions_schema = {
-                "0": {"size": 1024, "fs": "xfs", "mountpoint": "/boot"}
+                "1": {"size": 1024, "fs": "xfs", "mountpoint": "/boot"}
             }
 
         if LVM_ENABLED:
@@ -416,8 +429,8 @@ def get_partition_schema(selected_partition_schema: dict) -> dict:
         return partitions_schema
 
     ## FN ENTRY POINT
-    # MBR can have max 4 primary partitions, can't be bothered to code this in 2024
-    if len(selected_partition_schema) >= 3 and not IS_GPT and not LVM_ENABLED:
+    # MBR can have max 4 primary partitions, can't be bothered to code this in 2025
+    if len(selected_partition_schema) >= 3 and not IS_UEFI_SYSTEM and not LVM_ENABLED and not FORCE_GPT:
         logger.error(
             "We cannot create more than 4 parts in MBR mode (boot + swap + two other partitions)...Didn't bother to code that path for prehistoric systems. Consider enabling LVM"
         )
@@ -494,6 +507,7 @@ def validate_partition_schema(partitions: dict) -> bool:
         logger.error(msg)
         return False
     logger.info(f"Total allocated disk size: {total_size} / {USABLE_DISK_SPACE}")
+    logger.info(f"Partition schema\n{partitions}")
     return True
 
 
@@ -622,15 +636,27 @@ def execute_parted_commands(partitions_schema: dict) -> bool:
         else:  # Non LVM partitions handling
             partition_start = partition_end
             partition_end = partition_start + part_properties["size"]
-        parted_commands.append(
-            f'parted -a optimal -s {DISK_PATH} mkpart primary {part_properties["fs"]} {partition_start} {partition_end}'
-        )
+        
+        if part_properties["fs"] == "biosboot":
+            logger.info("Creating specific biosboot partition with bios_grub on flag")
+            parted_commands.append(
+                f'parted -a optimal -s {DISK_PATH} mkpart primary {partition_start} {partition_end}'
+            )
+            # We need to set bios_grub flag on biosboot partition
+            parted_commands.append(
+                f'parted -s {DISK_PATH} set {part_index} bios_grub on'
+            )
+        else:
+            parted_commands.append(
+                f'parted -a optimal -s {DISK_PATH} mkpart primary {part_properties["fs"]} {partition_start} {partition_end}'
+            )
+
     for parted_command in parted_commands:
         if DEV_MOCK:
-            logger.info(f"Would execute command {parted_command}")
+            logger.info(f"Would execute command: {parted_command}")
             result = True
         else:
-            logger.info(f"Executing command {parted_command}")
+            logger.info(f"Executing command: {parted_command}")
             result, output = dirty_cmd_runner(parted_command)
         if not result:
             logger.error(f"Command failed: {output}")
@@ -748,7 +774,7 @@ def setup_users() -> bool:
     rootpw --isencrypted <somestring>
     user --name user --isencrypted --password=<somestring>
     """
-    logger.info("Setting up password file")
+    logger.info("Setting up password file in /tmp/users")
     if IS_ROOT_PASSWORD_CRYPTED:
         is_crypted = "--iscrypted "
     else:
@@ -830,7 +856,7 @@ if not IS_VIRTUAL:
     IS_VIRTUAL, _ = dirty_cmd_runner(
         r'dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|NetPerfect\|netperfect_vm"'
     )
-IS_GPT = is_gpt_system()
+IS_UEFI_SYSTEM = is_uefi_system()
 
 if not DISK_PATH:
     errno=1

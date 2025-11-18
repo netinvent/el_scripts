@@ -11,7 +11,7 @@ SCRIPT_BUILD="2025111401"
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
 
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
-VIRT_BRAND_NAME=NetPerfect # Brand which will be used to detect virtual machines
+VIRT_BRAND_NAME=NetPerfect # String that will be searched in SMBIOS to detect virtual machines
 ISSUE_MESSAGE_EXTRA="- Private System" # Will be displayed with BRAND_NAME in /etc/issue.net
 BRAND_VER=5.1
 

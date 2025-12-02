@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025112401"
+SCRIPT_BUILD="2025120201"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -64,7 +64,8 @@ CONFIGURE_TERMINAL_RESIZER=true
 
 # Install and configure node_exporter
 CONFIGURE_NODE_EXPORTER=true
-NODE_EXPORTER_SKIP_FIREWALL=false # Do not open node_exporter port in firewall
+# See below for firewall settings
+
 # Setup python smartmontools / nvme tooling for prometheus
 CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS=true
 
@@ -92,6 +93,9 @@ CONFIGURE_FIREWALL=true
 # Optional whitelist IPs / CIDR for firewall
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
+
+NODE_EXPORTER_USE_IP_WHITELISTS=true # Use firewall whitelists for node exporter if they're defined
+NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall for everyone
 
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true
@@ -1895,6 +1899,13 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
                 firewall-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
             done
         fi
+        if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+            log "Adding node exporter whitelisted IPs to firewalld"
+            # shellcheck disable=SC2086
+            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
+                firewall-cmd --permanent --zone=public --add-rich-rule="rule family='ipv4' source address='${whitelist_ip}' port protocol='tcp' port='9100' accept" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld node exporter whitelist" "ERROR"
+            done
+        fi
         systemctl start firewalld
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
@@ -1909,6 +1920,12 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         else
             log "Adding generic SSH port permission to ufw so we can work"
             /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
+        fi
+        if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+            log "Adding node exporter whitelisted IPs to ufw"
+            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
+                /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
+            done
         fi
     fi
 fi

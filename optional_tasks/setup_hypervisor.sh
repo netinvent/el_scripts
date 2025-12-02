@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2025092301 for RHEL9/10
+## Hypervisor Installer 2025120201 for RHEL9/10
 
 # Requirements:
 # RHEL9 / 10
@@ -9,8 +9,11 @@
 # optional, setup_hypervisor.conf file with variable overrides
 [ -f ./setup_hypervisor.conf ] && source ./setup_hypervisor.conf
 
-# Setup bridge for first ethernet interface and use it's IP configuration
+# Setup bridge interface
 [ -z "${SETUP_BRIDGE}" ] && SETUP_BRIDGE=true
+# Specify interface to bridge, or auto to get first ethernet interface available
+# This will copy current interface IP configuration to the bridge
+[ -z "${SETUP_BRIDGE_IFACE}" ] && SETUP_BRIDGE_IFACE=auto
 
 # COCKPIT ALLOWED USER
 [ -z "${ADMIN_USER}" ] && ADMIN_USER=myuser
@@ -226,12 +229,21 @@ sed -i 's/^root/#root/g' /etc/cockpit/disallowed-users 2>> "${LOG_FILE}" || log 
 
 
 if [ "${SETUP_BRIDGE}" != false ]; then
-    log "#### Setup first ethernet interface as bridged to new bridge kvmbr0 ####"
-    # ip -br l == ip print brief list of network interfaces
-    iface=$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1; exit }')
-    if [ -z "${iface}" ]; then
-        log_quit "Failed to get first ethernet interface" "ERROR"
+    log "#### Setup new bridge kvmbr0 ####"
+    if [ "${SETUP_BRIDGE_IFACE}" == "auto" ]; then
+        log "Getting first ethernet interface for bridge"
+        # ip -br l == ip print brief list of network interfaces
+        iface=$(ip -br l | awk '$1 !~ "lo|vir|wl" { print $1; exit }')
+        if [ -z "${iface}" ]; then
+            log_quit "Failed to get first ethernet interface" "ERROR"
+        fi
+    else
+        if ! grep -e "^${SETUP_BRIDGE_IFACE} " <(ip -br l) > /dev/null 2>&1; then
+            log_quit "Specified interface ${SETUP_BRIDGE_IFACE} not found" "ERROR"
+        fi
+        iface="${SETUP_BRIDGE_IFACE}"
     fi
+    log "Using interface ${iface} for bridge"
 
     # Get nmcli connection name for interface
     cnx="$(nmcli -t -f GENERAL.CONNECTION d show "${iface}" | awk -F':' '{print $2}')"

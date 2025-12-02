@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025120201"
+SCRIPT_BUILD="2025120202"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -93,8 +93,9 @@ CONFIGURE_FIREWALL=true
 # Optional whitelist IPs / CIDR for firewall
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
+FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=true # Allow all ports for whitelisted IPs
 
-NODE_EXPORTER_USE_IP_WHITELISTS=true # Use firewall whitelists for node exporter if they're defined
+NODE_EXPORTER_USE_IP_WHITELISTS=true # Use firewall whitelists for node exporter if they're defined, unless all ports are whitelisted
 NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall for everyone
 
 # Install and configure fail2ban
@@ -1892,14 +1893,14 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
         systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
         # Starting firewalld may need a reboot to work, so let's not log start failures here
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] && [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
             log "Adding whitelisted IPs to firewalld in trusted zone"
             # shellcheck disable=SC2086
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
                 firewall-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
             done
-        fi
-        if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+        # Don't bother to add node_exporter exception if whitelists already allow all ports
+        elif [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
             log "Adding node exporter whitelisted IPs to firewalld"
             # shellcheck disable=SC2086
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
@@ -1912,20 +1913,20 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
         systemctl enable ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
         systemctl start ufw 2>> "${LOG_FILE}" || log "Failed to start ufw" "ERROR"
         echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] && [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
             log "Adding whitelisted IPs to ufw"
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
                 /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
             done
-        else
-            log "Adding generic SSH port permission to ufw so we can work"
-            /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
-        fi
-        if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+        elif [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
             log "Adding node exporter whitelisted IPs to ufw"
             for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
                 /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
             done
+        fi
+        if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" != true ]; then
+            log "Adding generic SSH port permission to ufw so we can work"
+            /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
         fi
     fi
 fi

@@ -513,12 +513,17 @@ fi
 if [ ${IS_VIRTUAL} != true ]; then
     log "Setting up disk SMART tooling"
     # Make sure we install smartmontools even if already present
+    SMARTD_SYSTEMD_SERVICE=smartd
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
         SMARTD_CONF_FILE=/etc/smartmontools/smartd.conf
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
         SMARTD_CONF_FILE=/etc/smartd.conf
+        # Override smartd service name for debian 13+ which became smartmontools instead of smartd
+        if [ "${RELEASE}" -ge 13 ]; then
+            SMARTD_SYSTEMD_SERVICE=smartmontools
+        fi
     fi
 
     if [ ! -f "${SMARTD_CONF_FILE}" ]; then
@@ -528,7 +533,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     sed -i 's/^DEVICESCAN/# DEVICESCAN/g' "${SMARTD_CONF_FILE}" >> "${LOG_FILE}" 2>&1
     # Add our basic devicescan entry
     echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
-    systemctl enable smartd 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
+    systemctl enable ${SMARTD_SYSTEMD_SERVICE} 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
     if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"

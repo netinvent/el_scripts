@@ -5,7 +5,7 @@
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 
-SCRIPT_BUILD="2025120202"
+SCRIPT_BUILD="2025120601"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -103,6 +103,9 @@ CONFIGURE_FAIL2BAN=true
 
 # Optional whitelist IPs / CIDR for Fail2ban
 FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
+
+# Keep ipv4 forwarding active (necessary for container setups and most routing setups)
+KEEP_IPV4_FORWARDING=false
 
 # Optional allow non protected fs symlinks
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
@@ -2043,6 +2046,20 @@ echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK
 EOF
     [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
     chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"
+fi
+
+if [ "${KEEP_IPV4_FORWARDING}" != false ]; then
+    log "Keeping IPv4 forwarding enabled"
+    sysctl -w net.ipv4.ip_forward=1 2>> "${LOG_FILE}" || log "Failed to set net.ipv4.ip_forward at runtime" "ERROR"
+    # This file is created by OpenSCAP profiles on EL systems
+    if [ -f /etc/sysctl.d/99-sysctl.conf ]; then
+        set_conf_value /etc/sysctl.d/99-sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.d/99-sysctl.conf" "ERROR"
+    else
+        # Create our own file to enforce the setting
+        set_conf_value /etc/sysctl.d/99-ipv4-forward.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.d/99-ipv4-forward.conf" "ERROR"
+    fi
+    # We also need to patch /etc/sysctl.conf since OpenScap and others may disable the setting there too
+    set_conf_value /etc/sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.conf" "ERROR"
 fi
 
 if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then

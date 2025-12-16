@@ -4,7 +4,7 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
-# Works with Ubuntu 22.04 tls, altough scap support needs to be disabled as of 16-12-2025
+# Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
 SCRIPT_BUILD="2025121601"
 

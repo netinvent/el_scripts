@@ -111,6 +111,8 @@ KEEP_IPV4_FORWARDING=false
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
 ALLOW_UNPROTECTED_FS_SYMLINKS=false
 
+VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
+
 LOG_FILE=/root/.el-configurator.log
 
 log() {
@@ -2078,6 +2080,12 @@ if [ "${CONFIGURE_NETWORK_SCHEDULING}" != false ]; then
     log "Setup cake qdisc algorithm and bbr congestion control"
     set_conf_value /etc/sysctl.d/99-sched.conf "net.core.default_qdisc" "cake"
     set_conf_value /etc/sysctl.d/99-sched.conf "net.ipv4.tcp_congestion_control" "bbr"
+fi
+
+if [ -n "${VM_SWAPPINESS_VALUE}" ]; then
+    log "Setting vm.swappiness to ${VM_SWAPPINESS_VALUE}"
+    sysctl -w vm.swappiness="${VM_SWAPPINESS_VALUE}" 2>> "${LOG_FILE}" || log "Failed to set vm.swappiness at runtime" "ERROR"
+    set_conf_value /etc/sysctl.d/99-vm-swappiness.conf "vm.swappiness" "${VM_SWAPPINESS_VALUE}" || log "Failed to set vm.swappiness in /etc/sysctl.d/99-vm-swappiness.conf" "ERROR"
 fi
 
 if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then

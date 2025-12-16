@@ -4,8 +4,9 @@
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
+# Works with Ubuntu 22.04 tls, altough scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2025120601"
+SCRIPT_BUILD="2025121601"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -42,7 +43,7 @@ EOF
 )
 
 
-# Select SCAP PROFILE, choosing "" disables scap profile
+# Select SCAP PROFILE, choosing "" or false disables scap profile, which is a requirement for ubuntu
 # Get profile list with oscap info "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
 # where flavor in rhel,debian and release = major os version
 # See https://www.open-scap.org/download/
@@ -205,8 +206,9 @@ is_virtual() {
 
 get_el_version() {
     if [ -f /etc/os-release ]; then
-        # DIST must contain "rhel", "almalinux", "debian" or alike
-	# The following awk line has been tested on almalinux 8, rhel 10 and debian 12
+    # DIST must contain "rhel", "almalinux", "debian", "ubuntu" or alike
+    # FLAVOR will contain "rhel" or "debian"
+	# The following awk line has been tested on almalinux 8, almalinux 9, rhel 10, almalinux 10, debian 12, debian 13 and ubuntu 22
         DIST=$(awk '{ if ($1~/^ID=/) { sub("ID=","", $0); gsub("\"","", $0); print tolower($0) }}' /etc/os-release)
         RELEASE=0
         if grep 'ID="rhel"' /etc/os-release > /dev/null || grep 'ID_LIKE="*rhel*' /etc/os-release > /dev/null; then
@@ -245,7 +247,22 @@ get_el_version() {
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE} "
             fi
-
+        elif grep 'ID=*ubuntu*' /etc/os-release > /dev/null; then
+            FLAVOR=debian
+            if grep -e 'VERSION_ID="20' /etc/os-release > /dev/null; then
+                RELEASE=20
+                SYSTEMD_PREFIX=/etc/systemd
+            elif grep -e 'VERSION_ID="22' /etc/os-release > /dev/null; then
+                RELEASE=22
+                SYSTEMD_PREFIX=/etc/systemd
+            fi
+            if [ "${RELEASE}" -ge 20 ]; then
+                log "Found Linux ${DIST} release ${RELEASE}, limited compatibility"
+            else
+                log_quit "Not compatible with ${DIST} release ${RELEASE} "
+            fi
+        else
+            log_quit "Cannot determine OS flavor from /etc/os-release"
         fi
     else
         log_quit "No /etc/os-release file found"
@@ -400,7 +417,8 @@ if [ "${SCAP_PROFILE}" != false ]; then
         # Let's reinstall openscap in case we're running this script on a non prepared machine
         if [ "${FLAVOR}" = "rhel" ]; then
             dnf install -y openscap scap-security-guide 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
-        elif [ "${FLAVOR}" = "debian" ]; then
+        # Limit to debian only, no ubuntu support for openscap, so we need to check for DIST instead of simply FLAVOR to be debian
+        elif [ "${FLAVOR}" = "debian" ] && [ "${DIST}" = "debian" ]; then
             log "Installing openscap utils"
                 apt install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
             if [ "${RELEASE}" -ge 12 ]; then

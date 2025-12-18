@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# SCRIPT BUILD 2024110502
+# SCRIPT BUILD 2025121801
 
 LOG_FILE=/root/.npf-postinstall.log
 POST_INSTALL_SCRIPT_GOOD=true
@@ -111,6 +111,10 @@ stop_service() {
 get_version() {
     local binary="${1}"
 
+    if ! type "${binary}" > /dev/null 2>&1; then
+        log "Binary ${binary} not found in PATH" "ERROR"
+        return
+    fi
     version=$(${binary} --version 2>&1)
     log "Installed ${binary} version:"
     log "${version}"

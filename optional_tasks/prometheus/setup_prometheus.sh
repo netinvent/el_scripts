@@ -178,6 +178,11 @@ copy_opt_files() {
             log "Target file ${target_file} eixsts. Skipping copy"
             continue
         fi
+        if [ -f "${target_file}" ]; then
+            log "Creating backup of ${target_file}"
+            old_file="$(basename "${file}")_$(date +%Y-%m-%d-%H-%M-%S).bak"
+            mv "${target_file}" "${target_dir}/${old_file}" || log "Failed to create backup of ${target_file}" "ERROR"
+        fi
         cp "${src_file}" "${target_dir}" || log "Failed to copy ${file} to ${target_dir}" "ERROR"
         chown "${USERNAME}:${USERNAME}" "${target_file}" || log "Failed to change ownership of ${target_file}" "ERROR"
     done

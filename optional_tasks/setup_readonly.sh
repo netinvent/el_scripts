@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2025092301 for RHEL9
+## Readonly setup script 2025122301 for RHEL9/10
 
 # Requirements:
-# RHEL9 installed
+# RHEL9/10 installed
 
 LOG_FILE=/root/.npf-readonly.log
 SCRIPT_GOOD=true
@@ -107,6 +107,9 @@ echo "/var/lib/rsyslog" >> /etc/statetab.d/rsyslog 2>> "${LOG_FILE}" || log "Can
 # cockpit
 echo "/var/lib/pcp" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
 echo "/etc/pcp" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
+# cockpit RHEL10 specific
+echo "/etc/cockpit/ws-certs.d" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
+
 # dnf cache
 echo "/var/lib/dnf" >> /etc/statetab.d/dnf 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/dnf" "ERROR"
 # For DNF to work we'd need /var/cache/dnf but obviously /var/cache overrides this
@@ -114,6 +117,8 @@ echo "/var/cache" >> /etc/statetab.d/dnf 2>> "${LOG_FILE}" || log "Cannot create
 echo "/var/lib/kdump" >> /etc/statetab.d/kdump 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/kdump" "ERROR"
 # TPM
 echo "/var/lib/tpm2-tss" >> /etc/statetab.d/tpm 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/tpm" "ERROR" 
+# fail2ban
+echo "/var/lib/fail2ban" >> /etc/statetab.d/fail2ban 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/fail2ban" "ERROR"
 
 
 if [ "${target}" == "hv" ]; then
@@ -147,6 +152,8 @@ sed -i 's:dirs\(.*\)/var/log:#/dirs\1/var/log # Configured in /etc/statetab to b
 # Size is 1/2 of system RAM
 echo "dirs /var/log/tuned" >> /etc/rwtab.d/tuned 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/tuned" "ERROR"
 echo "files /etc/issue" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
+# Deal with password updates in RO systems, example error: Dec 23 09:08:34 host.local pwhistory_helper[4115]: Cannot create /etc/security/opasswd temp file: Read-only file system
+echo "dirs /etc/security" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
 
 if [ "${target}" == "ztl" ]; then
     log "Configuring specific ZTL stateless settings"

@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2025121601"
+SCRIPT_BUILD="2026010601"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -107,6 +107,10 @@ FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
 # Keep ipv4 forwarding active (necessary for container setups and most routing setups)
 KEEP_IPV4_FORWARDING=false
+
+# Keep arp_filter disabled (may cause network issues with some cloud provider VMs)
+# Setting this to false enhances security, but may cause network issues like sporadic loss of network
+KEEP_ARP_FILTER_DISABLED=true
 
 # Optional allow non protected fs symlinks
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
@@ -447,6 +451,11 @@ if [ "${SCAP_PROFILE}" != false ]; then
             log_quit "Cannot setup OpenSCAP on this system"
         fi
         log "Setting up scap profile with remote resources"
+
+        # Note: on certain debian 12 setups, oscap is stuck forever with anssi_bp_28_high profile when doing FS checks
+        # In that case, one can exclude the specific rules that are causing the issue until a stable SSG gets released
+        # oscap xccdf eval --profile anssi_bp28_high --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions --remediate "/usr/share/xml/scap/ssg/content/ssg-debian12-ds.xml"
+
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
         # result 2 is partially applied, which can be normal
         if [ $? -eq 1 ]; then
@@ -2072,6 +2081,7 @@ if [ "${KEEP_IPV4_FORWARDING}" != false ]; then
     log "Keeping IPv4 forwarding enabled"
     sysctl -w net.ipv4.ip_forward=1 2>> "${LOG_FILE}" || log "Failed to set net.ipv4.ip_forward at runtime" "ERROR"
     # This file is created by OpenSCAP profiles on EL systems
+    # Note that /etc/sysctl.d/99-sysctl.conf is a symlink to /etc/sysctl.conf if OpenSCAP was used
     if [ -f /etc/sysctl.d/99-sysctl.conf ]; then
         set_conf_value /etc/sysctl.d/99-sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.d/99-sysctl.conf" "ERROR"
     else
@@ -2080,6 +2090,21 @@ if [ "${KEEP_IPV4_FORWARDING}" != false ]; then
     fi
     # We also need to patch /etc/sysctl.conf since OpenScap and others may disable the setting there too
     set_conf_value /etc/sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.conf" "ERROR"
+fi
+
+[ "${KEEP_ARP_FILTER_DISABLED}" != false ]; then
+    log "Disabling ARP filtering which may cause network issues with some cloud provider VMs"
+    sysctl -w net.ipv4.conf.all.arp_filter=0 2>> "${LOG_FILE}" || log "Failed to set net.ipv4.conf.all.arp_filter at runtime" "ERROR"
+    # This file is created by OpenSCAP profiles on EL systems
+    # Note that /etc/sysctl.d/99-sysctl.conf is a symlink to /etc/sysctl.conf if OpenSCAP was used
+    if [ -f /etc/sysctl.d/99-sysctl.conf ]; then
+        set_conf_value /etc/sysctl.d/99-sysctl.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.d/99-sysctl.conf" "ERROR"
+    else
+        # Create our own file to enforce the setting
+        set_conf_value /etc/sysctl.d/99-arp-filter.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.d/99-arp-filter.conf" "ERROR"
+    fi
+    # We also need to patch /etc/sysctl.conf since OpenScap and others may disable the setting there too
+    set_conf_value /etc/sysctl.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.conf" "ERROR"tl.d/99-arp-filter.conf" "ERROR"
 fi
 
 if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then
@@ -2154,6 +2179,7 @@ if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
     fi
+    log "chmod /usr/bin/sudo to setuid root and disabling noexec in sudoers"
     chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
 else

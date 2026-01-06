@@ -256,6 +256,9 @@ ln -s /run/NetworkManager/resolv.conf /etc/resolv.conf 2>> "${LOG_FILE}" || log 
 
 # Make root user password non expiring so we don't get locked out since readonly can't update root password
 chage -I -1 -m 0 -M -1 -E -1 root
+# Alternatively, we could make /etc/shadow statetab writable but that would be less secure
+# We'd also need to make /etc/security/opasswd rwtab writable or else we'd get the following error
+# Cannot create /etc/security/opasswd temp file: Read-only file system
 
 if [ "${SCRIPT_GOOD}" == false ]; then
     echo "#### WARNING Installation FAILED ####"

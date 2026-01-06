@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2025122301 for RHEL9/10
+## Readonly setup script 2026010601 for RHEL9/10
 
 # Requirements:
 # RHEL9/10 installed
@@ -253,6 +253,9 @@ if [ -f /etc/resolv.conf ]; then
 fi
 ln -s /run/NetworkManager/resolv.conf /etc/resolv.conf 2>> "${LOG_FILE}" || log "Cannot link /run/NetworkManager/resolv.conf to /etc/resolv.conf" "ERROR"
 
+
+# Make root user password non expiring so we don't get locked out since readonly can't update root password
+chage -I -1 -m 0 -M -1 -E -1 root
 
 if [ "${SCRIPT_GOOD}" == false ]; then
     echo "#### WARNING Installation FAILED ####"

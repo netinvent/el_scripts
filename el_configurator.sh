@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026010601"
+SCRIPT_BUILD="2026010701"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -460,7 +460,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi
-        log "Setting up scap profile with remote resources"
+        log "Setting up scap profile ${SCAP_PROFILE}with remote resources"
 
         # Note: on certain debian 12 setups, oscap is stuck forever with anssi_bp_28_high profile when doing FS checks
         # In that case, one can exclude the specific rules that are causing the issue until a stable SSG gets released
@@ -476,7 +476,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     else
-        log "Setting up scap profile without internet"
+        log "Setting up scap profile ${SCAP_PROFILE}without internet"
         oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
@@ -517,10 +517,10 @@ check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -4 -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
-        dnf install -4 -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
+        dnf install -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
+        dnf install -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
         # We need to update after installing epel-release since it will update various packages
-        dnf update -4 -y 2>> "${LOG_FILE}" || log "Failed to update system after epel-release install" "ERROR"
+        dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system after epel-release install" "ERROR"
         # The following packages are epel dependent
         # WIP: RHEL 10 has no atop package at the moment
         if [ "${RELEASE}" -eq 10 ]; then
@@ -530,13 +530,13 @@ if [ $? -eq 0 ]; then
         fi
         # We actually want word splitting here
         # shellcheck disable=SC2086
-        dnf install -4 -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
+        dnf install -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
         dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
-            dnf install -4 -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
+            dnf install -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
         fi
         if [ "${CONFIGURE_TUNED}" != false ]; then
-            dnf install -4 -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
+            dnf install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"

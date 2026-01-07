@@ -103,6 +103,7 @@ NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall fo
 CONFIGURE_FAIL2BAN=true
 
 # Optional whitelist IPs / CIDR for Fail2ban
+# Attention, when overriding this via a kernel argument, you'll need to override this value too
 FAIL2BAN_IGNORE_IP_LIST="${FIREWALL_WHITELIST_IP_LIST}"
 
 # Keep ipv4 forwarding active (necessary for container setups and most routing setups)
@@ -1948,8 +1949,10 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
                 fi
             fi
             # Since we allow ip whitelists for all, we should disable ssh & cockpit allowance for everyone else
-            firewall-offline-cmd --zone=public --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
-            firewall-offline-cmd --zone=public --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
+            # Using --zone=public here with firewall-offline-cmd results in "Can't use lokkit options with other options" error
+            # Fortunately, the default zone is public
+            firewall-offline-cmd --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
+            firewall-offline-cmd --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
         fi
 
     elif [ "${FLAVOR}" = "debian" ]; then

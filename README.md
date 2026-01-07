@@ -9,6 +9,7 @@
 This script collection is designed to work on:
 - Redhat / AlmaLinux / RockyLinux / CentOS and other EL8, EL9 or EL10 clones
 - Debian 12 & 13
+- Minimal ubuntu support
 
 
 ### Enterprise Linux configurator script
@@ -17,18 +18,19 @@ The script allows to configure an existing Enterprise Linux in order to be compl
 The script is already included in the kickstart file for Redhat systems.  On Debian, it must be run manually.
 
 To configure an existing setup, you can use the following  
->[!WARNING]
->Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
-```sh
-curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | bash -
-```
-
 >[!NOTE]
 >A more secure way of doing
 ```
 curl -OL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh
-## Manual code review (or sha256sum check)
+## Manual option configuration (and perhaps sha256sum check)
 bash ./el_configurator.sh
+```
+
+As a quick one liner, you can also run with
+>[!WARNING]
+>Danger Will Robinson - This one liner executes code you should download and review first unless you trust this repo, your dns and any intermediate proxy
+```sh
+curl -sSfL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh | bash -
 ```
 
 

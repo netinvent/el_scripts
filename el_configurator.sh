@@ -1843,33 +1843,41 @@ if [ "${CONFIGURE_TERMINAL_RESIZER}" != false ]; then
 
 
 resize_term() {
-
     old=$(stty -g)
     stty raw -echo min 0 time 5
 
     printf '\0337\033[r\033[999;999H\033[6n\0338' > /dev/tty
-    IFS='[;R' read -r _ rows cols _ < /dev/tty
+    IFS='[;R' read -t 1 -r _ rows cols _ < /dev/tty
 
     stty "$old"
 
-    # echo "cols:$cols"
-    # echo "rows:$rows"
-    stty cols "$cols" rows "$rows"
+    [ -z "$cols" ] || [ -z "$rows" ] && echo "could not determine tty size: cols: $cols, rows: $rows" || stty cols "$cols" rows "$rows"
 }
 
 resize_term2() {
-
+    oldrows=$(tput lines)
+    oldcols=$(tput cols)
     old=$(stty -g)
     stty raw -echo min 0 time 5
 
     printf '\033[18t' > /dev/tty
-    IFS=';t' read -r _ rows cols _ < /dev/tty
+    IFS=';t' read -t 1 -r _ rows cols _ < /dev/tty
 
     stty "$old"
 
-    # echo "cols:$cols"
-    # echo "rows:$rows"
-    stty cols "$cols" rows "$rows"
+    if [ -z "$cols" ] || [ -z "$rows" ]; then
+        echo "could not determine tty size: cols: $cols, rows: $rows"
+    else
+        if [ "$cols" -eq "$oldcols" ] && [ "$rows" -eq "$oldrows" ]; then
+            return
+        fi
+        stty cols "$cols" rows "$rows"
+        if [ $? -eq 0 ]; then
+            echo "Resized terminal from ${oldcols}x${oldrows} to ${cols}x${rows}"
+        else
+            echo "Failed to resize terminal from ${oldcols}x${oldrows} to ${cols}x${rows}"
+        fi
+    fi
 }
 
 # Run only if we're in a serial terminal

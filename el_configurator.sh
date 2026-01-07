@@ -1935,21 +1935,21 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
             if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
                 log "Adding whitelisted IPs to firewalld in trusted zone"
                 for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --permanent --zone=trusted --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
+                    firewall-offline-cmd --zone=trusted --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
                 done
             else
                 log "Adding generic ssh permission for whitelisted IPs to firewalld"
                 for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --permanent --zone=dmz --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
+                    firewall-offline-cmd --zone=dmz --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
                 done
                 if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
                     log "Adding node exporter whitelisted IPs to firewalld dmz zone"
-                    firewall-offline-cmd --permanent --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
+                    firewall-offline-cmd --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
                 fi
             fi
             # Since we allow ip whitelists for all, we should disable ssh & cockpit allowance for everyone else
-            firewall-offline-cmd --permanent --zone=public --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
-            firewall-offline-cmd --permanent --zone=public --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
+            firewall-offline-cmd --zone=public --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
+            firewall-offline-cmd --zone=public --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
         fi
 
     elif [ "${FLAVOR}" = "debian" ]; then

@@ -2008,6 +2008,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
 fi
 
 if [ "${__FAIL2BAN_INSTALLED}" = true ]; then
+    log "Setting up fail2ban configuration"
     # Enable SSHD jail by adding a local jail conf file
     ssh_jailfile="/etc/fail2ban/jail.d/99-sshd-el.conf"
     if [ ! -f "${ssh_jailfile}" ]; then
@@ -2024,6 +2025,7 @@ if [ "${__FAIL2BAN_INSTALLED}" = true ]; then
     set_conf_value "${default_jailfile}" "bantime.increment" "true" " = "
     set_conf_value "${default_jailfile}" "bantime.rndtime" "300" " = "
     if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
+        log "Adding ignore IPs to fail2ban: ${FAIL2BAN_IGNORE_IP_LIST//:/ }"
         # We replace the semicolons with spaces since fail2ban needs a space separated CIDR list
         set_conf_value "${default_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST//:/ }" " = "
     fi

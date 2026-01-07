@@ -2000,9 +2000,9 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
    		FAIL2BAN_INSTALLED=false
 	else
     	FAIL2BAN_INSTALLED=true
-        # On Debian 12, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
-        if [ "${RELEASE}" -eq 12 ]; then
-            sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf*
+        # On Debian 12+, fail2ban backend needs to be set to systemd since /var/log/auth.log does not exist anymore
+        if [ "${RELEASE}" -ge 12 ]; then
+            sed -i 's#^backend = %(sshd_backend)s#backend = systemd#g' /etc/fail2ban/jail.conf 2>> "${LOG_FILE}" || log "Failed to set fail2ban backend to systemd" "ERROR"
         fi
 	fi
 fi

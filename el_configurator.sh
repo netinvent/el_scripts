@@ -91,10 +91,10 @@ CONFIGURE_TUNED=true
 # Install and configure firewall
 CONFIGURE_FIREWALL=true
 
-# Optional whitelist IPs / CIDR for firewall
-#FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24 10.0.0.1"
+# Optional whitelist IPs / CIDR for firewall, semicolon separated
+#FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24:10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
-FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=true # Allow all ports for whitelisted IPs
+FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=true # Allow all ports for whitelisted IPs, if not enabled, only ssh is allowed
 
 NODE_EXPORTER_USE_IP_WHITELISTS=true # Use firewall whitelists for node exporter if they're defined, unless all ports are whitelisted
 NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall for everyone
@@ -1928,40 +1928,55 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
     # Enable firewall (firewalld is enabled by default on EL)
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
-        systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to start firewalld" "ERROR"
-        # Starting firewalld may need a reboot to work, so let's not log start failures here
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] && [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
-            log "Adding whitelisted IPs to firewalld in trusted zone"
-            # shellcheck disable=SC2086
-            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                firewall-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
-            done
-        # Don't bother to add node_exporter exception if whitelists already allow all ports
-        elif [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
-            log "Adding node exporter whitelisted IPs to firewalld"
-            # shellcheck disable=SC2086
-            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                firewall-cmd --permanent --zone=public --add-rich-rule="rule family='ipv4' source address='${whitelist_ip}' port protocol='tcp' port='9100' accept" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld node exporter whitelist" "ERROR"
-            done
+        # By default, firewalld has ssh and cockpit allowed for public zone
+        # Starting firewalld will not work in postinstall environment, so we will enable it but start it later
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] ; then
+            IFS=':' read -r -a FIREWALL_WHITELIST_IP_ARRAY <<< "${FIREWALL_WHITELIST_IP_LIST}"
+            if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+                log "Adding whitelisted IPs to firewalld in trusted zone"
+                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
+                    firewall-offline-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
+                done
+            else
+                log "Adding generic ssh permission for whitelisted IPs to firewalld"
+                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
+                    firewall-offline-cmd --permanent --zone=dmz --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
+                done
+                if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+                    log "Adding node exporter whitelisted IPs to firewalld dmz zone"
+                    firewall-offline-cmd --permanent --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
+                fi
+            fi
+            # Since we allow ip whitelists for all, we should disable ssh & cockpit allowance for everyone else
+            firewall-offline-cmd --permanent --zone=public --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
+            firewall-offline-cmd --permanent --zone=public --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
         fi
-        systemctl start firewalld
+
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         systemctl enable ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
         systemctl start ufw 2>> "${LOG_FILE}" || log "Failed to start ufw" "ERROR"
         echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] && [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
-            log "Adding whitelisted IPs to ufw"
-            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
-            done
-        elif [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ] && [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
-            log "Adding node exporter whitelisted IPs to ufw"
-            for whitelist_ip in ${FIREWALL_WHITELIST_IP_LIST[@]}; do
-                /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
-            done
-        fi
-        if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" != true ]; then
+        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+            IFS=':' read -r -a FIREWALL_WHITELIST_IP_ARRAY <<< "${FIREWALL_WHITELIST_IP_LIST}"
+            if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+                log "Adding whitelisted IPs to ufw"
+                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
+                    /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
+                done
+            else
+                log "Adding generic ssh permission for whitelisted IPs to ufw"
+                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
+                    /sbin/ufw allow from "${whitelist_ip}" to any port 22 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw ssh whitelist" "ERROR"
+                done
+                if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+                    log "Adding node exporter whitelisted IPs to ufw"
+                    for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
+                        /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
+                    done
+                fi
+            fi
+        else
             log "Adding generic SSH port permission to ufw so we can work"
             /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
         fi
@@ -2009,7 +2024,8 @@ fi
         set_conf_value "${default_jailfile}" "bantime.increment" "true" " = "
         set_conf_value "${default_jailfile}" "bantime.rndtime" "300" " = "
         if [ "${FAIL2BAN_IGNORE_IP_LIST}" != "" ]; then
-            set_conf_value "${default_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST}" " = "
+            # We replace the semicolons with spaces since fail2ban needs a space separated CIDR list
+            set_conf_value "${default_jailfile}" "ignoreip" "${FAIL2BAN_IGNORE_IP_LIST//:/ }" " = "
         fi
 
         set_conf_value "${default_jailfile}" "findtime" "2h" " = "

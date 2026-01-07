@@ -404,6 +404,15 @@ EOF
 
 check_internet
 if [ $? -eq 0 ]; then
+    if ! type curl > /dev/null 2>&1 && ! type wget > /dev/null 2>&1; then
+        log "Let's try to download curl"
+        if [ "${FLAVOR}" = "rhel" ]; then
+            dnf install -y curl 2>> "${LOG_FILE}" || log "curl is missing and cannot be installed" "ERROR"
+        elif [ "${FLAVOR}" = "debian" ]; then
+            apt install -y curl 2>> "${LOG_FILE}" || log "curl is missing and cannot be installed" "ERROR"
+        fi
+    fi
+
     log "Updating system"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"

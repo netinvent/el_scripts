@@ -1935,12 +1935,12 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
             if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
                 log "Adding whitelisted IPs to firewalld in trusted zone"
                 for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --permanent --zone=trusted --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
+                    firewall-offline-cmd --permanent --zone=trusted --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
                 done
             else
                 log "Adding generic ssh permission for whitelisted IPs to firewalld"
                 for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --permanent --zone=dmz --add-source=${whitelist_ip} 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
+                    firewall-offline-cmd --permanent --zone=dmz --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
                 done
                 if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
                     log "Adding node exporter whitelisted IPs to firewalld dmz zone"

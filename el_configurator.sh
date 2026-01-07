@@ -2108,7 +2108,7 @@ if [ "${KEEP_IPV4_FORWARDING}" != false ]; then
     set_conf_value /etc/sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.conf" "ERROR"
 fi
 
-[ "${KEEP_ARP_FILTER_DISABLED}" != false ]; then
+if [ "${KEEP_ARP_FILTER_DISABLED}" != false ]; then
     log "Disabling ARP filtering which may cause network issues with some cloud provider VMs"
     sysctl -w net.ipv4.conf.all.arp_filter=0 2>> "${LOG_FILE}" || log "Failed to set net.ipv4.conf.all.arp_filter at runtime" "ERROR"
     # This file is created by OpenSCAP profiles on EL systems
@@ -2120,7 +2120,7 @@ fi
         set_conf_value /etc/sysctl.d/99-arp-filter.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.d/99-arp-filter.conf" "ERROR"
     fi
     # We also need to patch /etc/sysctl.conf since OpenScap and others may disable the setting there too
-    set_conf_value /etc/sysctl.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.conf" "ERROR"tl.d/99-arp-filter.conf" "ERROR"
+    set_conf_value /etc/sysctl.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.conf" "ERROR"
 fi
 
 if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then

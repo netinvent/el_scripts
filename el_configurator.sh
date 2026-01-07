@@ -1837,7 +1837,7 @@ fi
 if [ "${CONFIGURE_TERMINAL_RESIZER}" != false ]; then
     # Setup automagic terminal resize
     # singequotes on EOF prevents variable expansion
-    # Tested on EL8, EL9 and Debian 12
+    # Tested on EL7, EL8, EL9, Debian 12 and Debian 13
     cat << 'EOF' > /etc/profile.d/term_resize.sh
 # Based on solution https://unix.stackexchange.com/a/283206/135459 that replaces xterm-resize package
 

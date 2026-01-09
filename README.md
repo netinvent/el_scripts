@@ -17,14 +17,12 @@ This script collection is designed to work on:
 The script allows to configure an existing Enterprise Linux in order to be compliant with OpenSCAP security profiles like ANSSI BP-028, configure various security enhancements and optional improved settings.  
 The script is already included in the kickstart file for Redhat systems.  On Debian, it must be run manually.
 
-To configure an existing setup, you can use the following  
->[!NOTE]
->A more secure way of doing
+To configure an existing setup, you can download the main script with
 ```
 curl -OL https://raw.githubusercontent.com/netinvent/el_scripts/main/el_configurator.sh
-## Manual option configuration (and perhaps sha256sum check)
-bash ./el_configurator.sh
 ```
+You should review the configuration directives in the script, or override them, than launch the script with `bash el_configurator.sh`
+
 
 As a quick one liner, you can also run with
 >[!WARNING]

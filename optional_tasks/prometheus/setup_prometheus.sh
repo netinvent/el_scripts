@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# SCRIPT BUILD 2025121801
+# SCRIPT BUILD 2026010901
 
 LOG_FILE=/root/.npf-postinstall.log
 POST_INSTALL_SCRIPT_GOOD=true
@@ -83,6 +83,17 @@ make_dir() {
     fi
 }
 
+download() {
+    local url="${1}"
+    local filename="${2:-$(basename "${url}")}"
+
+    if [ -f "${filename}" ]; then
+        log "File ${filename} already exists, skipping download"
+        return
+    fi
+    curl -OL "${url}" || log_quit "Failed to download ${url}" "ERROR"
+}
+
 start_service() {
     local service="${1}"
 
@@ -162,8 +173,10 @@ conf_firewall() {
 }
 
 copy_opt_files() {
-    local opt_files="${1}"
+    local extracted_dir="${1}"
     local target_dir="${2}"
+    shift; shift
+    local opt_files=("$@")
 
     if [ "${UPGRADE}" == true ]; then
         log "Not copying optional files in upgrade mode"
@@ -172,22 +185,19 @@ copy_opt_files() {
 
     for file in "${opt_files[@]}"; do
         [ -z "${file}" ] && continue
-        if [ "${file}" == "$(basename "${file}")" ]; then
-            src_file="${SCRIPT_DIR}/${file}"
-        else
-            src_file="${file}"
-        fi
-        target_file="${target_dir}/$(basename "${file}")"
-        if [ -d "${target_file}" ]; then
-            log "Target file ${target_file} eixsts. Skipping copy"
-            continue
-        fi
-        if [ -f "${target_file}" ]; then
+        #if [ "${file}" == "$(basename "${file}")" ]; then
+        #    src_file="${SCRIPT_DIR}/${file}"
+        #else
+        #    src_file="${file}"
+        #fi
+        src_file="${extracted_dir}/${file}"
+        target_file="${target_dir}/${file}"
+        if [ -f "${target_file}" ] || [ -f "${target_file}" ]; then
             log "Creating backup of ${target_file}"
             old_file="$(basename "${file}")_$(date +%Y-%m-%d-%H-%M-%S).bak"
             mv "${target_file}" "${target_dir}/${old_file}" || log "Failed to create backup of ${target_file}" "ERROR"
         fi
-        cp "${src_file}" "${target_dir}" || log "Failed to copy ${file} to ${target_dir}" "ERROR"
+        cp -fr "${src_file}" "${target_dir}" || log "Failed to copy ${src_file} to ${target_dir}" "ERROR"
         chown "${USERNAME}:${USERNAME}" "${target_file}" || log "Failed to change ownership of ${target_file}" "ERROR"
     done
 }
@@ -213,7 +223,7 @@ ORG=prometheus
 REPO=prometheus
 BINARIES=(prometheus promtool)
 FIREWALL_PORTS=(9091/tcp)
-OPT_FILES=(consoles console_libraries prometheus.yml)
+OPT_FILES=(prometheus.yml)
 LAST_VERSION=$(get_latest_git_release "${ORG}" "${REPO}")
 ARCHIVE_NAME=$(get_git_archive_name "${ORG}" "${REPO}" "${BINARY_ARCH}")
 DOWNLOAD_LINK=$(get_git_download_link "${ORG}" "${REPO}" "${BINARY_ARCH}")
@@ -221,9 +231,10 @@ DOWNLOAD_LINK=$(get_git_download_link "${ORG}" "${REPO}" "${BINARY_ARCH}")
 log "Installing latest ${REPO} release ${LAST_VERSION}"
 goto_install_dir
 
-curl -OL "${DOWNLOAD_LINK}" || log "Failed to download ${REPO}" "ERROR"
+download "${DOWNLOAD_LINK}" "${ARCHIVE_NAME}"
 tar xvf "${ARCHIVE_NAME}" || log "Failed to extract ${REPO}" "ERROR"
-cd "${ARCHIVE_NAME%%.tar.gz}" || log "Failed to change directory to ${REPO}" "ERROR"
+extracted_dir="${ARCHIVE_NAME%%.tar.gz}"
+cd "${extracted_dir}" || log "Failed to change directory to ${extracted_dir}" "ERROR"
 if [ "${UPGRADE}" == true ]; then
     get_version "${REPO}"
     stop_service "${REPO}"
@@ -265,7 +276,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
+    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
     sed -i "s/### TENANT ###/${tenant}/g" /etc/prometheus/prometheus.yml || log "Failed to replace tenant in prometheus config" "ERROR"
     sed -i "s/### TENANT_API_PASSWORD ###/${tenant_api_password}/g" /etc/prometheus/prometheus.yml || log "Failed to replace tenant api password in prometheus config" "ERROR"
 
@@ -286,9 +297,10 @@ DOWNLOAD_LINK=$(get_git_download_link "${ORG}" "${REPO}" "${BINARY_ARCH}")
 log "Installing latest ${REPO} release ${LAST_VERSION}"
 goto_install_dir
 
-curl -OL "${DOWNLOAD_LINK}" || log "Failed to download ${REPO}" "ERROR"
+download "${DOWNLOAD_LINK}" "${ARCHIVE_NAME}"
 tar xvf "${ARCHIVE_NAME}" || log "Failed to extract ${REPO}" "ERROR"
-cd "${ARCHIVE_NAME%%.tar.gz}" || log "Failed to change directory to ${REPO}" "ERROR"
+extracted_dir="${ARCHIVE_NAME%%.tar.gz}"
+cd "${extracted_dir}" || log "Failed to change directory to ${extracted_dir}" "ERROR"
 if [ "${UPGRADE}" == true ]; then
     get_version "${REPO}"
     stop_service "${REPO}"
@@ -315,7 +327,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
+    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 
@@ -335,9 +347,10 @@ DOWNLOAD_LINK=$(get_git_download_link "${ORG}" "${REPO}" "${BINARY_ARCH}")
 log "Installing latest ${REPO} release ${LAST_VERSION}"
 goto_install_dir
 
-curl -OL "${DOWNLOAD_LINK}" || log "Failed to download ${REPO}" "ERROR"
+download "${DOWNLOAD_LINK}" "${ARCHIVE_NAME}"
 tar xvf "${ARCHIVE_NAME}" || log "Failed to extract ${REPO}" "ERROR"
-cd "${ARCHIVE_NAME%%.tar.gz}" || log "Failed to change directory to ${REPO}" "ERROR"
+extracted_dir="${ARCHIVE_NAME%%.tar.gz}"
+cd "${extracted_dir}" || log "Failed to change directory to ${extracted_dir}" "ERROR"
 if [ "${UPGRADE}" == true ]; then
     get_version "${REPO}"
     stop_service "${REPO}"
@@ -366,12 +379,11 @@ EOF
 [ $? -ne 0 ] && log "Failed to create ${REPO} service" "ERROR"
 
 conf_firewall "${FIREWALL_PORTS[@]}"
-copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
 get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
+    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 
@@ -391,9 +403,10 @@ OPT_FILES=("/opt/install/${ARCHIVE_NAME%%.tar.gz}/snmp.yml")
 log "Installing latest ${REPO} release ${LAST_VERSION}"
 goto_install_dir
 
-curl -OL "${DOWNLOAD_LINK}" || log "Failed to download ${REPO}" "ERROR"
+download "${DOWNLOAD_LINK}" "${ARCHIVE_NAME}"
 tar xvf "${ARCHIVE_NAME}" || log "Failed to extract ${REPO}" "ERROR"
-cd "${ARCHIVE_NAME%%.tar.gz}" || log "Failed to change directory to ${REPO}" "ERROR"
+extracted_dir="${ARCHIVE_NAME%%.tar.gz}"
+cd "${extracted_dir}" || log "Failed to change directory to ${extracted_dir}" "ERROR"
 if [ "${UPGRADE}" == true ]; then
     get_version "${REPO}"
     stop_service "${REPO}"
@@ -419,12 +432,11 @@ EOF
 [ $? -ne 0 ] && log "Failed to create ${REPO} service" "ERROR"
 
 conf_firewall "${FIREWALL_PORTS[@]}"
-copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
 get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${OPT_FILES[@]}" /etc/prometheus
+    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 

@@ -185,12 +185,11 @@ copy_opt_files() {
 
     for file in "${opt_files[@]}"; do
         [ -z "${file}" ] && continue
-        #if [ "${file}" == "$(basename "${file}")" ]; then
-        #    src_file="${SCRIPT_DIR}/${file}"
-        #else
-        #    src_file="${file}"
-        #fi
         src_file="${extracted_dir}/${file}"
+        if [ ! -f "${src_file}" ] && [ ! -f "${src_file}" ]; then
+            log "Optional file ${src_file} does not exist. Skipping copy" "ERROR"
+            continue
+        fi
         target_file="${target_dir}/${file}"
         if [ -f "${target_file}" ] || [ -f "${target_file}" ]; then
             log "Creating backup of ${target_file}"
@@ -276,7 +275,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
+    copy_opt_files "${SCRIPT_DIR}" /etc/prometheus "${OPT_FILES[@]}"
     sed -i "s/### TENANT ###/${tenant}/g" /etc/prometheus/prometheus.yml || log "Failed to replace tenant in prometheus config" "ERROR"
     sed -i "s/### TENANT_API_PASSWORD ###/${tenant_api_password}/g" /etc/prometheus/prometheus.yml || log "Failed to replace tenant api password in prometheus config" "ERROR"
 
@@ -327,7 +326,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
+    copy_opt_files "${SCRIPT_DIR}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 
@@ -383,7 +382,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
+    copy_opt_files "${SCRIPT_DIR}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 
@@ -436,7 +435,7 @@ get_version "${REPO}"
 if [ "${UPGRADE}" == true ]; then
     start_service "${REPO}"
 else
-    copy_opt_files "${extracted_dir}" /etc/prometheus "${OPT_FILES[@]}"
+    copy_opt_files "${SCRIPT_DIR}" /etc/prometheus "${OPT_FILES[@]}"
 fi
 enable_service "${REPO}"
 

@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026010701"
+SCRIPT_BUILD="2026011501"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -1637,7 +1637,10 @@ EOF
     if [ "${CONFIGURE_TUNED}" != false ]; then
         log "Setting up tuned profiles"
 
-        if [ "${RELEASE}" -eq 10 ]; then
+        # RHEL 10 as well as Debian 13 use /etc/tuned/profiles whareas RHEL 8 and 9 use /etc/tuned as profile directory
+        if [ "${FLAVOR}" = "rhel" ] && [ "${RELEASE}" -ge 10 ]; then
+            TUNED_DIR=/etc/tuned/profiles
+        elif [ "${FLAVOR}" = "debian" ] && [ "${RELEASE}" -ge 13 ]; then
             TUNED_DIR=/etc/tuned/profiles
         else
             TUNED_DIR=/etc/tuned

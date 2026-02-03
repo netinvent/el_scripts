@@ -460,14 +460,15 @@ if [ "${SCAP_PROFILE}" != false ]; then
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi
-        log "Setting up scap profile ${SCAP_PROFILE}with remote resources"
+        log "Setting up scap profile ${SCAP_PROFILE} with remote resources"
 
         # Note: on certain debian 12 setups, oscap is stuck forever with anssi_bp_28_high profile when doing FS checks
         # In that case, one can exclude the specific rules that are causing the issue until a stable SSG gets released
-        # oscap xccdf eval --profile anssi_bp28_high --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions --remediate "/usr/share/xml/scap/ssg/content/ssg-debian12-ds.xml"
-
+        #DEBIAN_12_SKIP_RULES="--skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions
+        #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
-        # result 2 is partially applied, which can be normal
+        # exit code 2 means rules have been partially applied, which can be normal
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
         else
@@ -476,7 +477,7 @@ if [ "${SCAP_PROFILE}" != false ]; then
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     else
-        log "Setting up scap profile ${SCAP_PROFILE}without internet"
+        log "Setting up scap profile ${SCAP_PROFILE} without internet"
         oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"

@@ -2068,8 +2068,8 @@ if [ "${__FAIL2BAN_INSTALLED}" = true ]; then
 fi
 
 # Configure NTP if given
-if [ "${NTP_SERVER}" != "" ]; then
-    log "Setting up NTP servers: ${NTP_SERVER_LIST//:/ }"
+if [ "${NTP_SERVERS}" != "" ]; then
+    log "Setting up NTP servers: ${NTP_SERVERS//:/ }"
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
         chrony_svc=chronyd
@@ -2079,12 +2079,12 @@ if [ "${NTP_SERVER}" != "" ]; then
     else
         log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
     fi
-    IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVER_LIST}"
+    IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
     for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
         echo "server ${ntp_server} iburst" > /etc/chrony/sources.d/local-ntp-server.sources 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to /etc/chrony/sources.d/local-ntp-server.sources" "ERROR"
     done
-    systemctl enable ${chrony_svc} 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
-    systemctl start ${chrony_svc} 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"
+    systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
+    systemctl start "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"
 fi
 
 

@@ -91,6 +91,10 @@ CONFIGURE_TUNED=true
 # Install and configure firewall
 CONFIGURE_FIREWALL=true
 
+# Configure semicolon separated list of NTP servers
+#NTP_SERVERS="192.168.200.254:10.0.0.1"
+NTP_SERVERS=""
+
 # Optional whitelist IPs / CIDR for firewall, semicolon separated
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24:10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
@@ -2060,7 +2064,27 @@ if [ "${__FAIL2BAN_INSTALLED}" = true ]; then
 
     systemctl enable fail2ban 2>> "${LOG_FILE}" || log "Failed to enable fail2ban" "ERROR"
     # Starting fail2ban may need a reboot to work, so let's not log start failures here
-    systemctl start fail2ban
+    systemctl start fail2ban 2>> "${LOG_FILE}" || log "Failed to start fail2ban. It may need a reboot to work" "ERROR"
+fi
+
+# Configure NTP if given
+if [ "${NTP_SERVER}" != "" ]; then
+    log "Setting up NTP servers: ${NTP_SERVER_LIST//:/ }"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
+        chrony_svc=chronyd
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
+        chrony_svc=chrony
+    else
+        log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
+    fi
+    IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVER_LIST}"
+    for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
+        echo "server ${ntp_server} iburst" > /etc/chrony/sources.d/local-ntp-server.sources 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to /etc/chrony/sources.d/local-ntp-server.sources" "ERROR"
+    done
+    systemctl enable ${chrony_svc} 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
+    systemctl start ${chrony_svc} 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"
 fi
 
 

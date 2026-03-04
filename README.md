@@ -44,7 +44,7 @@ The `el_configurator` script will provide the following setups:
     - pre-configured smartmontools daemon
     - Optional IT8613 support
     - Intel TCO Watchdog support
-    - Tuned config profiles npf-eco and npf-perf
+    - Tuned config profiles el-eco and el-perf
 - Optional package installation if virtual machine is detected
     - Qemu guest agent setup on KVM machines
 - Optional enabling serial console on tty and grub interface
@@ -55,6 +55,7 @@ The `el_configurator` script will provide the following setups:
     - Prometheus Node exporter installation
     - Setup firewall
     - Setup fail2ban for SSH
+    - Setup NTP servers
 - Cleanup of image after setup
 
 

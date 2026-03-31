@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026011501"
+SCRIPT_BUILD="2026033101
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -2079,9 +2079,11 @@ if [ "${NTP_SERVERS}" != "" ]; then
     else
         log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
     fi
+    [ ! -d /etc/chrony/sources.d ] && mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+    set_conf_value "/etc/chrony/chrony.conf" "include" "/etc/chrony/sources.d/*.conf" " "|| log "Failed to set include for chrony conf" "ERROR"
     IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
     for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
-        echo "server ${ntp_server} iburst" > /etc/chrony/sources.d/local-ntp-server.sources 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to /etc/chrony/sources.d/local-ntp-server.sources" "ERROR"
+        echo "server ${ntp_server} iburst" >> /etc/chrony/sources.d/local-ntp-server.sources 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to /etc/chrony/sources.d/local-ntp-server.sources" "ERROR"
     done
     systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
     systemctl start "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"

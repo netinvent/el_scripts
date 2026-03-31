@@ -428,7 +428,9 @@ fi
 
 if [ "${SCAP_PROFILE}" != false ]; then  
     # Disable --fetch-remote-resources on machines without internet
-    [ ! -d /root/openscap_report ] && mkdir /root/openscap_report
+    if [ ! -d /root/openscap_report ]; then
+        mkdir /root/openscap_report 2>> "${LOG_FILE}" || log "Failed to create /root/openscap_report directory" "ERROR"
+    fi
 
     check_internet
     if [ $? -eq 0 ]; then
@@ -1394,7 +1396,9 @@ if __name__ == "__main__":
 EOF
 [ $? -ne 0 ] && log "Failed to create /usr/local/bin/nvme_metrics.py" "ERROR"
         log "Setting up smart & nvme for prometheus task"
-        [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
+        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
+            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
+        fi
         echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
         echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
 
@@ -1615,7 +1619,9 @@ EOF
 
         chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
         log "Setting up smart script for prometheus task"
-        [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
+        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
+            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
+        fi
         echo -e "MAILTO=""\n*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
     fi
 
@@ -1650,8 +1656,12 @@ EOF
         else
             TUNED_DIR=/etc/tuned
         fi
-        [ ! -d "${TUNED_DIR}/el-eco" ] && mkdir -p "${TUNED_DIR}/el-eco"
-        [ ! -d "${TUNED_DIR}/el-perf" ] && mkdir -p "${TUNED_DIR}/el-perf"
+        if [ ! -d "${TUNED_DIR}/el-eco" ]; then
+            mkdir -p "${TUNED_DIR}/el-eco" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-eco directory" "ERROR"
+        fi
+        if [ ! -d "${TUNED_DIR}/el-perf" ]; then
+            mkdir -p "${TUNED_DIR}/el-perf" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-perf directory" "ERROR"
+        fi
 
         cat << 'EOF' > "${TUNED_DIR}/el-eco/tuned.conf"
 [main]
@@ -1896,7 +1906,9 @@ fi
 
 # Configure persistent journal
 log "Setting up persistent boot journal"
-[ ! -d /var/log/journal ] && mkdir /var/log/journal
+if [ ! -d /var/log/journal ]; then
+    mkdir -p /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create /var/log/journal directory" "ERROR"
+fi
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
 sed -i 's/.*Storage=.*/Storage=persistent/g' "${SYSTEMD_PREFIX}/journald.conf" 2>> "${LOG_FILE}" || log "Failed to sed ${SYSTEMD_PREFIX}/journald.conf" "ERROR"
 
@@ -2079,7 +2091,9 @@ if [ "${NTP_SERVERS}" != "" ]; then
     else
         log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
     fi
-    [ ! -d /etc/chrony/sources.d ] && mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+    if [ ! -d /etc/chrony/sources.d ]; then
+        mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+    fi
     set_conf_value "/etc/chrony/chrony.conf" "include" "/etc/chrony/sources.d/*.conf" " "|| log "Failed to set include for chrony conf" "ERROR"
     IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
     for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
@@ -2110,7 +2124,9 @@ if [ "${CONFIGURE_NODE_EXPORTER}" != false ]; then
     if [ $? -eq 0 ]; then
         log "Installing Node exporter"
         cd /opt || log "No /opt directory found"
-        [ ! -d /var/lib/node_exporter/textfile_collector ] && mkdir -p /var/lib/node_exporter/textfile_collector
+        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
+            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
+        fi
         if type curl > /dev/null 2>&1; then
             curl -sSfL https://raw.githubusercontent.com/carlocorradini/node_exporter_installer/main/install.sh | INSTALL_NODE_EXPORTER_SKIP_FIREWALL=${NODE_EXPORTER_SKIP_FIREWALL} INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" sh -s - 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
         else

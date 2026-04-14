@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Hypervisor Installer 2025120201 for RHEL9/10
+## Hypervisor Installer 2026041301 for RHEL9/10
 
 # Requirements:
 # RHEL9 / 10
@@ -17,6 +17,9 @@
 
 # COCKPIT ALLOWED USER
 [ -z "${ADMIN_USER}" ] && ADMIN_USER=myuser
+
+# Setup virt-manager
+[ -z "${SETUP_VIRTMANAGER}" ] && SETUP_VIRTMANAGER=true
 
 # Setup SNMP
 [ -z "${SETUP_SNMP}" ] && SETUP_SNMP=false
@@ -168,11 +171,12 @@ fi
 dnf install -y openssl 2>> "${LOG_FILE}" || log "Failed to install openssl" "ERROR"
 
 # Optional virt-manager + X11 support (does not work in readonly mode)
-dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"
-log "Disabling upower that comes with virt-manager for whatever reason"
-systemctl stop upower 2>> "${LOG_FILE}" || log "Failed to stop upower" "ERROR"
-systemctl disable upower 2>> "${LOG_FILE}" || log "Failed to disable upower" "ERROR"
-
+if [ "${SETUP_VIRTMANAGER}" != false ]; then
+    dnf install -y virt-manager xorg-x11-xauth 2>> "${LOG_FILE}" || log "Failed to install virt-manager and X11 auth support" "ERROR"
+    log "Disabling upower that comes with virt-manager for whatever gui related reason"
+    systemctl stop upower 2>> "${LOG_FILE}" || log "Failed to stop upower" "ERROR"
+    systemctl disable upower 2>> "${LOG_FILE}" || log "Failed to disable upower" "ERROR"
+fi
 
 log "#### System tuning ####"
 # Don't log martian packets, obviously we'll get plenty

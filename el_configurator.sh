@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026042501"
+SCRIPT_BUILD="2026051701"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -51,7 +51,7 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
-# By default, ANSSI profiles disable sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
+# By default, ANSSI profiles disables sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
 ALLOW_SUDO=false
 
 # Setup SELinux on Debian
@@ -67,7 +67,7 @@ CONFIGURE_TERMINAL_RESIZER=true
 CONFIGURE_NODE_EXPORTER=true
 # See below for firewall settings
 
-# Setup python smartmontools / nvme tooling for prometheus
+# Setup python smartmontools / nvme tooling for prometheus on physical systems
 CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS=true
 
 # Make sure system automatically installs security updates
@@ -584,7 +584,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
     systemctl enable ${SMARTD_SYSTEMD_SERVICE} 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
-    if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ]; then
+    if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ] && [ "${IS_VIRTUAL}" != true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"
         if [ "${FLAVOR}" = "rhel" ]; then
             # As of 2025-09-23, there is no python3-prometheus_client package so we have to bootstrap in from python on RHEL10

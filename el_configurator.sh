@@ -1659,6 +1659,9 @@ EOF
         if [ ! -d "${TUNED_DIR}/el-eco" ]; then
             mkdir -p "${TUNED_DIR}/el-eco" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-eco directory" "ERROR"
         fi
+        if [ ! -d "${TUNED_DIR}/el-balanced" ]; then
+            mkdir -p "${TUNED_DIR}/el-balanced" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-balanced directory" "ERROR"
+        fi
         if [ ! -d "${TUNED_DIR}/el-perf" ]; then
             mkdir -p "${TUNED_DIR}/el-perf" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-perf directory" "ERROR"
         fi
@@ -1705,6 +1708,48 @@ script=script.sh
 EOF
         [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-eco/tuned.conf" "ERROR"
 
+ cat << 'EOF' > "${TUNED_DIR}/el-balanced/tuned.conf"
+[main]
+summary=EL NetPerfect Balanced
+include=powersave
+
+# SETTINGS_VER 2026052101
+
+[cpu]
+# Use governor conservative whenever we can, if not, use powersave
+governor=schedutil
+# The way we scale (set via cpupower set --perf-bias 0-15, 15 being most power efficient)
+energy_perf_bias=0
+# This will set the minimal frequency available (used with intel_pstate, which replaces cpufreq values
+min_perf_pct=40
+max_perf_pct=90
+
+[sysctl]
+# Never put 0, because of potential OOMs
+vm.swappiness=1
+# Keep watchguard active so our machine does not lay there for months without operating
+# nmi_watchdog is enabled while we do not operate the tunnel so the machine does not stay dead
+kernel.nmi_watchdog = 0
+
+##### Prevent blocking system on high IO
+
+#Percentage of system memory which when dirty then system can start writing data to the disks.
+vm.dirty_background_ratio = 1
+
+#Percentage of system memory which when dirty, the process doing writes would block and write out dirty pages to the disks.
+vm.dirty_ratio = 2
+
+# delay for disk commit
+vm.dirty_writeback_centisecs = 100
+
+[script]
+# ON RHEL8, we need to keep profile dir
+# ON RHEL9, relative path is enough
+#script=\${i:PROFILE_DIR}/script.sh
+script=script.sh
+EOF
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-balanced/tuned.conf" "ERROR"
+
         cat << 'EOF' > "${TUNED_DIR}/el-perf/tuned.conf"
 [main]
 summary=EL NetPerfect Performance
@@ -1750,6 +1795,7 @@ EOF
         cat << 'EOF' > "${TUNED_DIR}/el-eco/script.sh"
 #!/usr/bin/env bash
 
+# el-eco tuned script
 SCRIPT_VER=2024040701
 
 # Make sure cpupower output is language consistent
@@ -1785,9 +1831,51 @@ cpupower idle-set -D 50
 EOF
         [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-eco/script.sh" "ERROR"
 
+cat << 'EOF' > "${TUNED_DIR}/el-balanced/script.sh"
+#!/usr/bin/env bash
+
+# el-balanced tuned script
+SCRIPT_VER=2026052101
+
+# Make sure cpupower output is language consistent
+export LANG=C
+
+# schedutil is a good alternative to conservative/powersave/ondemand if exists
+if cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors | grep schedutil > /dev/null; then
+	governor=schedutil
+if cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors | grep ondemand > /dev/null; then
+    governor=ondemand
+else
+	governor=conservative
+fi
+
+min_freq=$(cpupower frequency-info | grep limits | awk '{print $3}')
+min_freq_unit=$(cpupower frequency-info | grep limits | awk '{print $4}')
+max_freq=$(cpupower frequency-info | grep limits | awk '{print $6}')
+max_freq_unit=$(cpupower frequency-info | grep limits | awk '{print $7}')
+
+# Calc max freq in eco mode, don't use bc anymore since it's probably not installed
+#max_freq_eco=$(bc <<< "scale=2; $max_freq/1.5")
+max_freq_eco=$(echo "print(round(${max_freq}/1.2, 2))" | python3)
+
+# Set governor, min and max freq
+cpupower frequency-set -g $governor -d ${min_freq}${min_freq_unit} -u ${max_freq_eco}${max_freq_unit}
+
+# Set perf bias to max eco
+cpupower set --perf-bias 5
+
+# Using idle states with a lacency > 10 will greatly affect bandwidth on KVM virtual machines
+# Enable all idle states
+cpupower idle-set -E
+# Disable any higher than 50ns latency idle states
+cpupower idle-set -D 50
+EOF
+        [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-balanced/script.sh" "ERROR"
+
         cat << 'EOF' > "${TUNED_DIR}/el-perf/script.sh"
 #!/usr/bin/env bash
 
+# el-perf tuned script
 SCRIPT_VER=2024040701
 
 # Make sure cpupower output is language consistent
@@ -1820,6 +1908,7 @@ EOF
         [ $? -ne 0 ] && log "Failed to create ${TUNED_DIR}/el-perf/script.sh" "ERROR"
 
         chmod +x "${TUNED_DIR}/el-eco/script.sh" 2>> "${LOG_FILE}" || log "Failed to chmod +x el-eco tuned script" "ERROR"
+        chmod +x "${TUNED_DIR}/el-balanced/script.sh" 2>> "${LOG_FILE}" || log "Failed to chmod +x el-balanced tuned script" "ERROR"
         chmod +x "${TUNED_DIR}/el-perf/script.sh" 2>> "${LOG_FILE}" || log "Failed to chmod +x el-perf tuned script" "ERROR"
     fi
 else

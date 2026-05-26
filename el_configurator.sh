@@ -1941,7 +1941,7 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
     fi
 
     log "Optimizing for serial console speed"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "kernel.printk" "4 4 1 7" " "
+    set_conf_value /etc/sysctl.d/99-kernel_printk.conf "kernel.printk" "4 4 1 7" " "
 fi
 
 if [ "${CONFIGURE_TERMINAL_RESIZER}" != false ]; then

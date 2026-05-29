@@ -121,6 +121,10 @@ KEEP_ARP_FILTER_DISABLED=true
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
 ALLOW_UNPROTECTED_FS_SYMLINKS=false
 
+# Apparmor disable runc profile in order to allow docker/podman to run on Debian machines with OpenSCAP
+# This is not an ideal fix from a security perspective
+DISABLE_APPARMOR_RUNC_PROFILE=true
+
 VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
 
 LOG_FILE=/root/.el-configurator.log
@@ -2288,6 +2292,14 @@ if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then
     log "Allowing unprotected symlinks in filesystems"
     sysctl -w fs.protected_symlinks=0 2>> "${LOG_FILE}" || log "Failed to set fs.protected_symlinks at runtime" "ERROR"
     set_conf_value /etc/sysctl.d/99-fs-symlinks.conf "fs.protected_symlinks" "0" || log "Failed to set fs.protected_symlinks in /etc/sysctl.d/99-fs-symlinks.conf" "ERROR"
+fi
+
+if [ "${DISABLE_APPARMOR_RUNC_PROFILE}" == true ]; then
+    if [ -f /etc/apparmor.d/runc ]; then
+        log "Disabling AppArmor runc profile which may cause issues with containers"
+        ln -s /etc/apparmor.d/runc /etc/apparmor.d/disable/ 2>> "${LOG_FILE}" || log "Failed to disable AppArmor runc profile" "ERROR"
+        systemctl restart apparmor 2>> "${LOG_FILE}" || log "Failed to restart AppArmor after disabling runc profile" "ERROR"
+    fi
 fi
 
 # Setting up watchdog in systemd

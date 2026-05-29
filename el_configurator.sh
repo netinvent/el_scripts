@@ -2413,6 +2413,22 @@ for file in /etc/crontab /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.
     chmod og-rwx "${file}" 2>> "${LOG_FILE}" || log "Failed to chmod og-rwx ${file}" "ERROR"
 done
 
+log "Configuring /etc/profile.d/tmout.sh since some shells dont like typeset"
+cat << 'EOF' > /etc/profile.d/tmout.sh
+# Set TMOUT to 600 seconds (10 minutes) of inactivity for interactive shells
+
+if [ "$0" == "tcsh" ]; then
+    set autologout=10
+elif [ "$0" == "bash" ]; then
+    typeset -xr TMOUT=600
+else
+    export TMOUT=600
+    readonly TMOUT
+    export TMOUT
+fi
+EOF
+[ $? -ne 0 ] && log "Failed to create /etc/profile.d/tmout.sh" "ERROR"
+
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then
     MOTD_STATUS="___EL POST SCRIPT: FAILURE___"

@@ -2,11 +2,11 @@
 #  -*- coding: utf-8 -*-
 
 
-__intname__ = "kickstart.partition_script.RHEL9-10"
+__intname__ = "kickstart.partition_script.EL9-10"
 __author__ = "Orsiris de Jong"
-__copyright__ = "Copyright (C) 2022-2025 Orsiris de Jong - NetInvent SASU"
+__copyright__ = "Copyright (C) 2022-2026 Orsiris de Jong - NetInvent"
 __licence__ = "BSD 3-Clause"
-__build__ = "2025111801"
+__build__ = "2026060301"
 
 ### This is a pre-script for kickstart files in RHEL 9-10
 ### Allows specific partition schemes with one or more data partitions
@@ -676,6 +676,12 @@ def setup_package_lists() -> bool:
         "n*firmware",
         "plymouth",
         "pipewire",
+        "bluez-libz",
+        "alsa-lib",
+        "smartmontools",
+        "cups-*",
+        "upower",
+        "upower-libs",
     ]
 
     package_require_virt_list = [

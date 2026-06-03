@@ -2203,7 +2203,7 @@ if [ "${NTP_SERVERS}" != "" ]; then
     IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
     local_ntp_file="/etc/chrony/sources.d/local-ntp-server.sources"
     for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
-        echo "server ${ntp_server} iburst" >> "${local_ntp_file}" 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to "${local_ntp_file}"" "ERROR"
+        echo "server ${ntp_server} iburst" >> "${local_ntp_file}" 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to ${local_ntp_file}" "ERROR"
         uniq_filelines "${local_ntp_file}"
     done
     systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"

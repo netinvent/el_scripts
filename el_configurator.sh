@@ -386,6 +386,7 @@ uniq_filelines() {
 
     if [ -f "${filename}" ]; then
         sort -u "${filename}" -o "${filename}" || log "Cannot make lines in file [${filename}] unique." "ERROR"
+    fi
 }
 
 ## Script entry point

@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026051701"
+SCRIPT_BUILD="2026060301"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -381,6 +381,13 @@ set_conf_value() {
 	fi
 }
 
+uniq_filelines() {
+    filename="${1:-false}
+
+    if [ -f "${filename}"]; then
+        sort -u "${filename}" -o "${filename}" || log "Cannot make lines in file [${filename}] unique." "ERROR"
+}
+
 ## Script entry point
 POST_INSTALL_SCRIPT_GOOD=true
 
@@ -586,6 +593,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     sed -i 's/^DEVICESCAN/# DEVICESCAN/g' "${SMARTD_CONF_FILE}" >> "${LOG_FILE}" 2>&1
     # Add our basic devicescan entry
     echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
+    uniq_filelines "${SMARTD_CONF_FILE}"
     systemctl enable ${SMARTD_SYSTEMD_SERVICE} 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
     if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ] && [ "${IS_VIRTUAL}" != true ]; then
@@ -2192,8 +2200,10 @@ if [ "${NTP_SERVERS}" != "" ]; then
     fi
     set_conf_value "/etc/chrony/chrony.conf" "include" "/etc/chrony/sources.d/*.conf" " "|| log "Failed to set include for chrony conf" "ERROR"
     IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
+    local_ntp_file="/etc/chrony/sources.d/local-ntp-server.sources"
     for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
-        echo "server ${ntp_server} iburst" >> /etc/chrony/sources.d/local-ntp-server.sources 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to /etc/chrony/sources.d/local-ntp-server.sources" "ERROR"
+        echo "server ${ntp_server} iburst" >> "${local_ntp_file}" 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to "${local_ntp_file}"" "ERROR"
+        uniq_filelines "${local_ntp_file}"
     done
     systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
     systemctl start "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"

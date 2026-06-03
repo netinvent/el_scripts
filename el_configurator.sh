@@ -382,9 +382,9 @@ set_conf_value() {
 }
 
 uniq_filelines() {
-    filename="${1:-false}
+    filename="${1:-false}"
 
-    if [ -f "${filename}"]; then
+    if [ -f "${filename}" ]; then
         sort -u "${filename}" -o "${filename}" || log "Cannot make lines in file [${filename}] unique." "ERROR"
 }
 

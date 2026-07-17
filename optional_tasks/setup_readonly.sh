@@ -261,12 +261,17 @@ chage -I -1 -m 0 -M -1 -E -1 root
 # We'd also need to make /etc/security/opasswd rwtab writable or else we'd get the following error
 # Cannot create /etc/security/opasswd temp file: Read-only file system
 
+# Make sure we don't interhit non-bind mountpoints that prevent start since SLAVE_MOUNTS=yes in /etc/sysconfig/readonly-root
+sed -Ei 's/(.*\[.*\].*)/#\1/g' /etc/fstab 2>> "${LOG_FILE}" || log "Cannot comment out non-bind mountpoints in /etc/fstab" "ERROR"
+
+
 if [ "${SCRIPT_GOOD}" == false ]; then
     echo "#### WARNING Installation FAILED ####"
     exit 1
 else
     echo "System is now readonly"
     echo ""
+    echo "Bear in mind that VM storage now defaults to /data instead of /var/lib/libvirt/images"
     echo "On modifications, please use 'mount -o remount,rw /'"
     echo ""
     echo "Once finished, please seal system with command"

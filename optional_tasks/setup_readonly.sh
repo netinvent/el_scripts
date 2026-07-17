@@ -110,6 +110,9 @@ echo "/etc/pcp" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot crea
 # cockpit RHEL10 specific
 echo "/etc/cockpit/ws-certs.d" >> /etc/statetab.d/cockpit 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cockpit" "ERROR"
 
+#  cube specific (this is a custom directory for some scripts)
+echo "/opt/cube" >> /etc/statetab.d/cube 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/cube" "ERROR"
+
 # dnf cache
 echo "/var/lib/dnf" >> /etc/statetab.d/dnf 2>> "${LOG_FILE}" || log "Cannot create /etc/statetab.d/dnf" "ERROR"
 # For DNF to work we'd need /var/cache/dnf but obviously /var/cache overrides this

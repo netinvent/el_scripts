@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Readonly setup script 2026010601 for RHEL9/10
+## Readonly setup script 2026071701 for RHEL9/10
 
 # Requirements:
 # RHEL9/10 installed
@@ -91,7 +91,7 @@ set_conf_value /etc/sysconfig/readonly-root READONLY yes
 set_conf_value /etc/sysconfig/readonly-root STATE_LABEL STATEFULRW 
 
 rm -f /etc/statetab.d/{snmp,nm,qemu,cockpit,rsyslog,prometheus,node_exporter,ztl} > /dev/null 2>&1
-rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,ztl} > /dev/null 2>&1
+rm -f /etc/rwtab.d/{tuned,issue,ztl,haproxy,fail2ban} > /dev/null 2>&1
 # statetab will be persistent volumes stored on a partition which label must match the
 # STATE_LABEL= directive in /etc/sysconfig/readonly-root (defaults to stateless-state)
 # Those dirs are stateful across reboots
@@ -154,6 +154,7 @@ echo "dirs /var/log/tuned" >> /etc/rwtab.d/tuned 2>> "${LOG_FILE}" || log "Canno
 echo "files /etc/issue" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
 # Deal with password updates in RO systems, example error: Dec 23 09:08:34 host.local pwhistory_helper[4115]: Cannot create /etc/security/opasswd temp file: Read-only file system
 echo "dirs /etc/security" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
+echo "dirs /var/lib/fail2ban" >> /etc/rwtab.d/fail2ban 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/fail2ban" "ERROR"
 
 if [ "${target}" == "ztl" ]; then
     log "Configuring specific ZTL stateless settings"

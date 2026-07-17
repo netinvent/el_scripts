@@ -155,8 +155,6 @@ sed -i 's:dirs\(.*\)/var/log:#/dirs\1/var/log # Configured in /etc/statetab to b
 # Size is 1/2 of system RAM
 echo "dirs /var/log/tuned" >> /etc/rwtab.d/tuned 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/tuned" "ERROR"
 echo "files /etc/issue" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
-# Deal with password updates in RO systems, example error: Dec 23 09:08:34 host.local pwhistory_helper[4115]: Cannot create /etc/security/opasswd temp file: Read-only file system
-echo "dirs /etc/security" >> /etc/rwtab.d/issue 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/issue" "ERROR"
 echo "dirs /var/lib/fail2ban" >> /etc/rwtab.d/fail2ban 2>> "${LOG_FILE}" || log "Cannot create /etc/rwtab.d/fail2ban" "ERROR"
 
 if [ "${target}" == "ztl" ]; then

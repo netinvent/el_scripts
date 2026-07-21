@@ -5,10 +5,17 @@
 # Requirements:
 # RHEL9 installed
 
-# You can define SIMPLEHELP_URL and HOST variables here or in a separate setup_simplehelp.conf file
+# You can define SIMPLEHELP_URL (service.tar) and HOST (server) variables here or in a separate setup_simplehelp.conf file
 [ -f ./setup_simplehelp.conf ] && source ./setup_simplehelp.conf
-[ -z "${SIMPLEHELP_URL}" ] && (echo "SIMPLEHELP_URL not defined in ./setup_simplehelp.conf" && exit 1)
-[ -z "${HOST}" ] && (echo "HOST not defined in ./setup_simplehelp.conf" && exit 1)
+if [ -z "${SIMPLEHELP_URL}" ]; then
+        echo "SIMPLEHELP_URL not defined in ./setup_simplehelp.conf"
+        exit 1
+fi
+if [ -z "${HOST}" ]; then
+        echo "HOST not defined in ./setup_simplehelp.conf"
+        exit 1
+fi
+
 
 LOG_FILE=/root/.npf-simplehelp.log
 SCRIPT_GOOD=true

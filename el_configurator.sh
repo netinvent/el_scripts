@@ -614,6 +614,7 @@ if [ ${IS_VIRTUAL} != true ]; then
         fi
         log "Setting up python smart script for prometheus"
 
+        # smartmon.py + PR270 from https://github.com/prometheus-community/node-exporter-textfile-collector-scripts/pull/270
         cat << 'EOF' > /usr/local/bin/smartmon.py
 #!/usr/bin/env python3
 

@@ -2368,13 +2368,13 @@ if [ -n "${VM_SWAPPINESS_VALUE}" ]; then
     set_conf_value /etc/sysctl.d/99-vm-swappiness.conf "vm.swappiness" "${VM_SWAPPINESS_VALUE}" || log "Failed to set vm.swappiness in /etc/sysctl.d/99-vm-swappiness.conf" "ERROR"
 fi
 
-if [ "${KERNLES_TO_KEEP}" -ne 0 ]; then
-    log "Setting number of kernels to keep to ${KERNLES_TO_KEEP}"
+if [ "${KERNELS_TO_KEEP}" -ne 0 ]; then
+    log "Setting number of kernels to keep to ${KERNELS_TO_KEEP}"
     if [ "${FLAVOR}" = "rhel" ]; then
-        set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNLES_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
-        dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNLES_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
+        set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNELS_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
+        dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNELS_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        set_conf_value /etc/apt/apt.conf.d/01autoremove-kernels "APT::NeverAutoRemove::${KERNLES_TO_KEEP}" "" "=" || log "Failed to set APT::NeverAutoRemove in /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
+        set_conf_value /etc/apt/apt.conf.d/01autoremove-kernels "APT::NeverAutoRemove::${KERNELS_TO_KEEP}" "" "=" || log "Failed to set APT::NeverAutoRemove in /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
         apt autoremove --purge -y 2>> "${LOG_FILE}" || log "Failed to autoremove old kernels" "ERROR"
     fi
 fi

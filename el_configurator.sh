@@ -6,7 +6,7 @@
 # Works with Debian 13, although atm no scap profile is available as of 27-08-2025
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026071701"
+SCRIPT_BUILD="2026081901"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -126,6 +126,8 @@ ALLOW_UNPROTECTED_FS_SYMLINKS=false
 DISABLE_APPARMOR_RUNC_PROFILE=true
 
 VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
+
+KERNELS_TO_KEEP=2 # Number of kernels to keep on the system, older ones will be removed (flattens false positives in SIEMs)
 
 LOG_FILE=/root/.el-configurator.log
 
@@ -2364,6 +2366,17 @@ if [ -n "${VM_SWAPPINESS_VALUE}" ]; then
     log "Setting vm.swappiness to ${VM_SWAPPINESS_VALUE}"
     sysctl -w vm.swappiness="${VM_SWAPPINESS_VALUE}" 2>> "${LOG_FILE}" || log "Failed to set vm.swappiness at runtime" "ERROR"
     set_conf_value /etc/sysctl.d/99-vm-swappiness.conf "vm.swappiness" "${VM_SWAPPINESS_VALUE}" || log "Failed to set vm.swappiness in /etc/sysctl.d/99-vm-swappiness.conf" "ERROR"
+fi
+
+if [ "${KERNLES_TO_KEEP}" -ne 0 ]; then
+    log "Setting number of kernels to keep to ${KERNLES_TO_KEEP}"
+    if [ "${FLAVOR}" = "rhel" ]; then
+        set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNLES_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
+        dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNLES_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        set_conf_value /etc/apt/apt.conf.d/01autoremove-kernels "APT::NeverAutoRemove::${KERNLES_TO_KEEP}" "" "=" || log "Failed to set APT::NeverAutoRemove in /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
+        apt autoremove --purge -y 2>> "${LOG_FILE}" || log "Failed to autoremove old kernels" "ERROR"
+    fi
 fi
 
 if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then

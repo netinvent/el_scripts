@@ -2295,12 +2295,30 @@ EOF
 el_configurator_date=0
 el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null)
 echo -e "# HELP el_configurator_setup_date timestamp when last EL configurator was run\n# TYPE el_configurator_setup_date gauge\nel_configurator_setup_date ${el_configurator_date}" > /var/lib/node_exporter/textfile_collector/el_configurator.prom
-if grep "EL POST SCRIPT: SUCCESS" /etc/motd >/dev/null 2>&1; then 
+
+if grep "EL POST SCRIPT: SUCCESS" /etc/motd >/dev/null 2>&1; then
     el_configurator_state=0
 else
     el_configurator_state=1
 fi
 echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK)\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
+
+needs_restarting() {
+    if type dnf > /dev/null 2>&1; then
+        dnf needs-restarting >/dev/null 2>&1
+        echo $?
+    elif type apt > /dev/null 2>&1; then
+        if [ -f /var/run/reboot-required ]; then
+                echo 1
+        fi
+    elif type zypper > /dev/null 2>&1; then
+        zypper needs-rebooting >/dev/null 2>&1
+        echo $?
+    else
+        echo 2
+    fi
+}
+echo -e "# HELP node_needs_restart if node needs a restart (1=yes, 0=no)\n# TYPE node_needs_restart gauge\nnode_needs_restart $(needs_restarting)" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 EOF
     [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
     chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"

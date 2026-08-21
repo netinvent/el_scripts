@@ -2305,14 +2305,14 @@ echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK
 
 needs_restarting() {
     if type dnf > /dev/null 2>&1; then
-        dnf needs-restarting >/dev/null 2>&1
+        dnf needs-restarting -r >/dev/null 2>&1
         echo $?
     elif type apt > /dev/null 2>&1; then
         if [ -f /var/run/reboot-required ]; then
                 echo 1
         fi
     elif type zypper > /dev/null 2>&1; then
-        zypper needs-rebooting >/dev/null 2>&1
+        zypper needs-rebooting -r >/dev/null 2>&1
         echo $?
     else
         echo 2

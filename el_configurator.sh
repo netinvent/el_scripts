@@ -2505,9 +2505,9 @@ log "Configuring /etc/profile.d/tmout.sh since some shells dont like typeset"
 cat << 'EOF' > /etc/profile.d/tmout.sh
 # Set TMOUT to 600 seconds (10 minutes) of inactivity for interactive shells
 
-if [ "$0" == "tcsh" ]; then
+if [ "$0" = "tcsh" ]; then
     set autologout=10
-elif [ "$0" == "bash" ]; then
+elif [ "$0" = "bash" ]; then
     typeset -xr TMOUT=600
 else
     export TMOUT=600

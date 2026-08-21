@@ -2303,7 +2303,6 @@ else
 fi
 echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK)\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 
-needs_reboot=0
 needs_rebooting() {
     if type dnf > /dev/null 2>&1; then
         dnf needs-restarting -r >/dev/null 2>&1
@@ -2319,6 +2318,8 @@ needs_rebooting() {
         needs_reboot=2
     fi
 }
+needs_reboot=0
+needs_rebooting
 echo -e "# HELP node_needs_reboot if node needs a restart (1=yes, 0=no)\n# TYPE node_needs_reboot gauge\nnode_needs_reboot $needs_reboot" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 EOF
     [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"

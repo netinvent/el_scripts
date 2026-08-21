@@ -2392,7 +2392,14 @@ if [ "${KERNELS_TO_KEEP}" -ne 0 ]; then
         set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNELS_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
         dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNELS_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        set_conf_value /etc/apt/apt.conf.d/01autoremove-kernels "APT::NeverAutoRemove::${KERNELS_TO_KEEP}" "" "=" || log "Failed to set APT::NeverAutoRemove in /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
+        cat << EOF > /etc/apt/apt.conf.d/01autoremove-kernels
+APT::NeverAutoRemove::KernelCount "${KERNELS_TO_KEEP}";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+EOF
+        if [ $? -ne 0 ]; then
+            log "Failed to create /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
+        fi
         apt autoremove --purge -y 2>> "${LOG_FILE}" || log "Failed to autoremove old kernels" "ERROR"
     fi
 fi

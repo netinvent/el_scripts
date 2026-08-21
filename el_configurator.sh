@@ -2303,23 +2303,23 @@ else
 fi
 echo -e "# HELP el_configurator_state current state of el_configurator run (0=OK)\n# TYPE el_configurator_state gauge\nel_configurator_state ${el_configurator_state}" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 
-needs_restart=0
-needs_restarting() {
+needs_reboot=0
+needs_rebooting() {
     if type dnf > /dev/null 2>&1; then
         dnf needs-restarting -r >/dev/null 2>&1
-        needs_restart=$?
+        needs_reboot=$?
     elif type apt > /dev/null 2>&1; then
         if [ -f /var/run/reboot-required ]; then
-                needs_restart=1
+                needs_reboot=1
         fi
     elif type zypper > /dev/null 2>&1; then
         zypper needs-rebooting -r >/dev/null 2>&1
-        needs_restart=$?
+        needs_reboot=$?
     else
-        needs_restart=2
+        needs_reboot=2
     fi
 }
-echo -e "# HELP node_needs_restart if node needs a restart (1=yes, 0=no)\n# TYPE node_needs_restart gauge\nnode_needs_restart $needs_restart" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
+echo -e "# HELP node_needs_reboot if node needs a restart (1=yes, 0=no)\n# TYPE node_needs_reboot gauge\nnode_needs_reboot $needs_reboot" >> /var/lib/node_exporter/textfile_collector/el_configurator.prom
 EOF
     [ $? -ne 0 ] && log "Failed to create /usr/local/bin/el_configurator_metrics.sh" "ERROR"
     chmod +x /usr/local/bin/el_configurator_metrics.sh  || log "Failed to chmod /usr/local/bin/el_configurator_metrics.sh" "ERROR"

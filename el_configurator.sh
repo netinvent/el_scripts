@@ -2390,6 +2390,7 @@ if [ "${KERNELS_TO_KEEP}" -ne 0 ]; then
     log "Setting number of kernels to keep to ${KERNELS_TO_KEEP}"
     if [ "${FLAVOR}" = "rhel" ]; then
         set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNELS_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
+        # shellcheck disable=SC2046
         dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNELS_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         cat << EOF > /etc/apt/apt.conf.d/01autoremove-kernels

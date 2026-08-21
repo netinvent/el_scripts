@@ -2460,7 +2460,11 @@ else
 fi
 
 # Apply CIS 5.3.3
-set_conf_value /etc/sudoers "Defaults logfile" "/var/log/sudo.log" "="
+if [ sudo -V | grep "sudo-rs" > /dev/null 2>&1 ]; then
+    log "This system uses sudo-rs, which does not support logging input/output. Disabling these settings in sudoers" "ERROR"
+else
+    set_conf_value /etc/sudoers "Defaults logfile" "/var/log/sudo.log" "="
+fi
 
 # Apply CIS 5.3.6
 set_conf_value /etc/sudoers "Defaults timestamp_timeout" "15" "="

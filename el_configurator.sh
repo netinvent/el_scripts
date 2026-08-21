@@ -344,43 +344,94 @@ check_internet() {
     return 1
 }
 
+escape_bre() {
+    # Escapes basic regular expression metacharacters so that a key is matched literally
+    # Without this, a name like net.ipv4.ip_forward would also match netXipv4Xip_forward
+    local __escaped="${1}"
+    __escaped="${__escaped//\\/\\\\}"
+    __escaped="${__escaped//./\\.}"
+    __escaped="${__escaped//\*/\\*}"
+    __escaped="${__escaped//\[/\\[}"
+    __escaped="${__escaped//\]/\\]}"
+    __escaped="${__escaped//^/\\^}"
+    __escaped="${__escaped//\$/\\$}"
+    printf '%s' "${__escaped}"
+}
+
 set_conf_value() {
     # Updates a line in a configuration file
     # name=value or name    =   value (gets rewritten to name=value) if separator = '='
     # name value if separator = ' '
     # name = value if separator = ' = '
-	file="${1}"
-	name="${2}"
-	value="${3}"
-	separator="${4:-=}"
+    # Every write is read back before returning, so a directive that did not land raises an ERROR
+    # instead of being reported as applied
+    # Returns 0 when the file holds the requested value, 1 otherwise
+    local file="${1}"
+    local name="${2}"
+    local value="${3}"
+    local separator="${4:-=}"
     # sed separator $'\001' (SOH) is chosen since it's unlikely to be used in a configuration file
     # sed separator can be changed to any other character as long as it's not used
     # if not used, we'll go for the SOH character
-    sed_separator="${5:-false}"
+    local sed_separator="${5:-false}"
     if [ "${sed_separator}" = false ]; then
         sed_separator=$(echo -en "\001")
     fi
 
-	if [ -f "$file" ]; then
-        # If separator is empty, this may fail if multiple entries beginning with name exist in file
-		if grep -e "^${name}.*${separator}" "${file}" > /dev/null 2>&1; then
-            log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
-			# Using -i.tmp for BSD compat
-			sed -i.eltmp "s${sed_separator}^${name}\s*${separator}\s*.*${sed_separator}${name}${separator}${value}${sed_separator}g" "${file}" >> "${LOG_FILE}" 2>&1
-			if [ $? -ne 0 ]; then
-				log "Cannot update value [${name}] to [${value}] in file [${file}]." "ERROR"
-                log "Current value is $(grep -e "^${name}.*${separator}" "${file}")" "NOTICE"
-			fi
-            # Remove temp file if exists
-			rm -f "$file.eltmp" > /dev/null 2>&1
-		else
-            log "Creating conf [${name}] set to [${value}] in file [${file}]." "INFO"
-			echo "${name}${separator}${value}" >> "${file}" || log "Cannot create value [${name}] to [${value}] in file [${file}]." "ERROR"
-		fi
-	else
+    local expected_line="${name}${separator}${value}"
+    local separator_core key_re replacement current
+
+    # Neither of these can be expressed through sed without corrupting the target file
+    case "${name}${value}" in
+        *"${sed_separator}"*)
+            log "Cannot set [${name}] in file [${file}]: name or value contains the sed separator." "ERROR"
+            return 1
+            ;;
+    esac
+    case "${expected_line}" in
+        *$'\n'*)
+            log "Cannot set [${name}] in file [${file}]: name or value contains a newline." "ERROR"
+            return 1
+            ;;
+    esac
+
+    # The separator may carry decorative spaces (' = '), but what delimits the key in the file is its
+    # core character. When that core is empty (separator is ' '), whitespace delimits the key instead.
+    separator_core="${separator//[[:space:]]/}"
+    if [ -n "${separator_core}" ]; then
+        key_re="^[[:space:]]*$(escape_bre "${name}")[[:space:]]*$(escape_bre "${separator_core}")"
+    else
+        key_re="^[[:space:]]*$(escape_bre "${name}")[[:space:]]"
+    fi
+
+    if [ ! -f "${file}" ]; then
         log "Creating file [${file}] with conf [${name}] set to [${value}]." "INFO"
-		echo "${name}${separator}${value}" > "${file}" || log "File [${file}] does not exist. Failed to create it with value for [${name}]" "ERROR"
-	fi
+        echo "${expected_line}" > "${file}" 2>> "${LOG_FILE}"
+    # The key boundary in key_re is what stops "PermitRootLoginPolicy" from satisfying a search for
+    # "PermitRootLogin", which used to leave sed with nothing to replace and the setting unwritten
+    elif grep -q -e "${key_re}" -- "${file}" 2>/dev/null; then
+        log "Updating conf [${name}] to [${value}] in file [${file}]." "INFO"
+        # On the replacement side of s///, & means "the whole match" and \ starts an escape
+        replacement="${expected_line//\\/\\\\}"
+        replacement="${replacement//&/\\&}"
+        # Using -i.eltmp for BSD compat
+        sed -i.eltmp "s${sed_separator}${key_re}.*${sed_separator}${replacement}${sed_separator}" "${file}" >> "${LOG_FILE}" 2>&1
+        # Remove temp file if exists
+        rm -f "${file}.eltmp" > /dev/null 2>&1
+    else
+        log "Creating conf [${name}] set to [${value}] in file [${file}]." "INFO"
+        echo "${expected_line}" >> "${file}" 2>> "${LOG_FILE}"
+    fi
+
+    # Read back what we asked for. A grep that matched a longer key, a value mangled by sed, or a file
+    # we could not write all land here instead of passing as success
+    if grep -q -F -x -e "${expected_line}" -- "${file}" 2>/dev/null; then
+        return 0
+    fi
+    current=$(grep -e "${key_re}" -- "${file}" 2>/dev/null | head -n 1)
+    log "Cannot set [${name}] to [${value}] in file [${file}]." "ERROR"
+    log "Current value is [${current}]" "NOTICE"
+    return 1
 }
 
 uniq_filelines() {

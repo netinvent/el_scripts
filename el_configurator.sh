@@ -801,6 +801,73 @@ set_grub_console_args() {
     set_conf_value "${grub_file}" "${setting}" "\"${kept_args}\"" "="
 }
 
+configure_ufw() {
+    # Sets up ufw from the configured whitelists, on Debian and derivatives.
+    #
+    # Rules go in before the firewall is switched on. ufw accepts them while it is inactive and
+    # applies them when enabled, whereas enabling first leaves a window in which the default deny
+    # policy is live with nothing allowed through, which drops the ssh session this script may well
+    # be running in, and strands the machine if the run stops there.
+    #
+    # ufw_reachable counts only the rules that actually grant access to the machine, so a whitelist
+    # ufw rejected outright cannot end with a firewall nobody can get past.
+    #
+    # Returns 0 when the firewall is enabled, 1 when it was deliberately left off
+    local whitelist_ip
+    local ufw_reachable=0
+    local firewall_whitelist_ip_array=()
+
+    if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
+        IFS=':' read -r -a firewall_whitelist_ip_array <<< "${FIREWALL_WHITELIST_IP_LIST}"
+        if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+            log "Adding whitelisted IPs to ufw"
+            for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
+                if /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}"; then
+                    ufw_reachable=$((ufw_reachable + 1))
+                else
+                    log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
+                fi
+            done
+        else
+            log "Adding generic ssh permission for whitelisted IPs to ufw"
+            for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
+                if /sbin/ufw allow from "${whitelist_ip}" to any port 22 proto tcp 2>> "${LOG_FILE}"; then
+                    ufw_reachable=$((ufw_reachable + 1))
+                else
+                    log "Failed to add ${whitelist_ip} to ufw ssh whitelist" "ERROR"
+                fi
+            done
+            if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+                log "Adding node exporter whitelisted IPs to ufw"
+                # Metrics do not make the machine reachable, so these do not count
+                for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
+                    /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
+                done
+            fi
+        fi
+    else
+        log "Adding generic SSH port permission to ufw so we can work"
+        if /sbin/ufw allow ssh 2>> "${LOG_FILE}"; then
+            ufw_reachable=$((ufw_reachable + 1))
+        else
+            log "Failed to allow ssh in ufw" "ERROR"
+        fi
+    fi
+
+    if [ "${ufw_reachable}" -eq 0 ]; then
+        # An unfirewalled machine you can still log into beats a firewalled one you cannot. This
+        # only happens when every rule was rejected, which means the whitelist itself is wrong.
+        log "No ufw rule granting access was accepted, leaving the firewall disabled rather than locking this machine out. Check FIREWALL_WHITELIST_IP_LIST" "ERROR"
+        return 1
+    fi
+
+    log "Enabling ufw with ${ufw_reachable} rule(s) granting access"
+    systemctl enable ufw 2>> "${LOG_FILE}" || log "Failed to enable ufw service" "ERROR"
+    systemctl start ufw 2>> "${LOG_FILE}" || log "Failed to start ufw" "ERROR"
+    echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
+    return 0
+}
+
 uniq_filelines() {
     filename="${1:-false}"
 
@@ -2530,32 +2597,7 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
 
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
-        systemctl enable ufw 2>> "${LOG_FILE}" || log "Failed to start ufw service" "ERROR"
-        systemctl start ufw 2>> "${LOG_FILE}" || log "Failed to start ufw" "ERROR"
-        echo y | /sbin/ufw enable 2>> "${LOG_FILE}" || log "Failed to enable ufw" "ERROR"
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
-            IFS=':' read -r -a FIREWALL_WHITELIST_IP_ARRAY <<< "${FIREWALL_WHITELIST_IP_LIST}"
-            if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
-                log "Adding whitelisted IPs to ufw"
-                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw whitelist" "ERROR"
-                done
-            else
-                log "Adding generic ssh permission for whitelisted IPs to ufw"
-                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    /sbin/ufw allow from "${whitelist_ip}" to any port 22 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw ssh whitelist" "ERROR"
-                done
-                if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
-                    log "Adding node exporter whitelisted IPs to ufw"
-                    for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                        /sbin/ufw allow from "${whitelist_ip}" to any port 9100 proto tcp 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to ufw node exporter whitelist" "ERROR"
-                    done
-                fi
-            fi
-        else
-            log "Adding generic SSH port permission to ufw so we can work"
-            /sbin/ufw allow ssh 2>> "${LOG_FILE}" || log "Failed to allow ssh in ufw" "ERROR"
-        fi
+        configure_ufw
     fi
 fi
 

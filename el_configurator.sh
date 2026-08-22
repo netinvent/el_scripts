@@ -655,6 +655,103 @@ sudoers_commit_edit() {
     return "${commit_rc}"
 }
 
+sshd_begin_edit() {
+    # Starts an edit of an sshd configuration file on a private copy, and puts the path of that
+    # copy in SSHD_EDIT_FILE. Change that copy, then call sshd_commit_edit to install and check it.
+    #
+    # A global is used rather than printing the path, because log() writes to stdout and also sets
+    # POST_INSTALL_SCRIPT_GOOD, both of which a command substitution would swallow.
+    #
+    # Optional argument is the file to edit, defaults to our own drop-in
+    # Returns 0 when the copy is ready, 1 otherwise
+    SSHD_EDIT_TARGET="${1:-/etc/ssh/sshd_config.d/99-el_configurator.conf}"
+    SSHD_EDIT_FILE=""
+
+    if ! type sshd > /dev/null 2>&1; then
+        log "sshd is not installed, skipping ${SSHD_EDIT_TARGET}" "ERROR"
+        return 1
+    fi
+    if [ ! -d "$(dirname "${SSHD_EDIT_TARGET}")" ]; then
+        log "No $(dirname "${SSHD_EDIT_TARGET}") directory, cannot write ${SSHD_EDIT_TARGET}" "ERROR"
+        return 1
+    fi
+
+    SSHD_EDIT_FILE=$(mktemp) || {
+        log "Cannot create a temporary copy of ${SSHD_EDIT_TARGET}" "ERROR"
+        SSHD_EDIT_FILE=""
+        return 1
+    }
+    # Seed the copy from the current file when there is one, so an edit adds to it instead of
+    # replacing it. A missing target simply starts empty.
+    if [ -f "${SSHD_EDIT_TARGET}" ] && ! cat "${SSHD_EDIT_TARGET}" > "${SSHD_EDIT_FILE}" 2>> "${LOG_FILE}"; then
+        log "Cannot copy ${SSHD_EDIT_TARGET}" "ERROR"
+        rm -f "${SSHD_EDIT_FILE}"
+        SSHD_EDIT_FILE=""
+        return 1
+    fi
+    return 0
+}
+
+sshd_commit_edit() {
+    # Installs the copy started by sshd_begin_edit, then checks the resulting configuration with
+    # sshd -t and rolls back if sshd would refuse to start.
+    #
+    # sshd is checked after installing rather than before, because a drop-in is only meaningful as
+    # part of the whole configuration: checking the fragment on its own would miss a value that
+    # conflicts with another drop-in.
+    #
+    # Returns 0 when the configuration is in place, 1 when it was rolled back
+    local sshd_backup sshd_had_target=false sshd_check commit_rc=0
+
+    if [ -z "${SSHD_EDIT_FILE}" ] || [ ! -f "${SSHD_EDIT_FILE}" ]; then
+        log "No sshd edit in progress to commit" "ERROR"
+        return 1
+    fi
+
+    sshd_backup=$(mktemp) || {
+        log "Cannot create a backup of ${SSHD_EDIT_TARGET}" "ERROR"
+        rm -f "${SSHD_EDIT_FILE}"
+        SSHD_EDIT_FILE=""
+        return 1
+    }
+    if [ -f "${SSHD_EDIT_TARGET}" ]; then
+        cat "${SSHD_EDIT_TARGET}" > "${sshd_backup}" 2>> "${LOG_FILE}"
+        sshd_had_target=true
+    fi
+
+    if ! cat "${SSHD_EDIT_FILE}" > "${SSHD_EDIT_TARGET}" 2>> "${LOG_FILE}"; then
+        log "Cannot write ${SSHD_EDIT_TARGET}" "ERROR"
+        rm -f "${SSHD_EDIT_FILE}" "${sshd_backup}"
+        SSHD_EDIT_FILE=""
+        return 1
+    fi
+    # CIS wants sshd_config and the files it includes readable by root only
+    chmod 0600 "${SSHD_EDIT_TARGET}" 2>> "${LOG_FILE}" || log "Cannot chmod 0600 ${SSHD_EDIT_TARGET}" "ERROR"
+
+    sshd_check=$(sshd -t 2>&1)
+    if [ -z "${sshd_check}" ]; then
+        log "Updated ${SSHD_EDIT_TARGET}, validated by sshd -t"
+    elif echo "${sshd_check}" | grep -i -e 'host key' -e 'hostkey' > /dev/null 2>&1; then
+        # Host keys are generated on first boot, so in a kickstart %post there are none yet and
+        # sshd -t cannot run. Rolling back here would silently drop the hardening on every
+        # kickstart install, which is worse than not being able to check it.
+        log "Cannot check ${SSHD_EDIT_TARGET} yet, sshd has no host keys in this environment. Keeping it" "NOTICE"
+        log "sshd -t said: ${sshd_check}" "NOTICE"
+    else
+        log "sshd rejected the configuration, rolling ${SSHD_EDIT_TARGET} back: ${sshd_check}" "ERROR"
+        if [ "${sshd_had_target}" = true ]; then
+            cat "${sshd_backup}" > "${SSHD_EDIT_TARGET}" 2>> "${LOG_FILE}" || log "Cannot restore ${SSHD_EDIT_TARGET}" "ERROR"
+        else
+            rm -f "${SSHD_EDIT_TARGET}" 2>> "${LOG_FILE}" || log "Cannot remove ${SSHD_EDIT_TARGET}" "ERROR"
+        fi
+        commit_rc=1
+    fi
+
+    rm -f "${SSHD_EDIT_FILE}" "${sshd_backup}" > /dev/null 2>&1
+    SSHD_EDIT_FILE=""
+    return "${commit_rc}"
+}
+
 uniq_filelines() {
     filename="${1:-false}"
 
@@ -3538,39 +3635,52 @@ EOF
     fi
 fi
 
-if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
-    log "Adding ClientAlive settings to sshd"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "TCPKeepAlive" "no" " "
+
+# All sshd directives go into one drop-in, written and checked as a single change, so that a bad
+# value is caught by sshd -t here instead of stopping sshd from starting at the next reboot
+if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ] || [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+    if sshd_begin_edit; then
+        if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
+            log "Adding ClientAlive settings to sshd"
+            set_conf_value "${SSHD_EDIT_FILE}" "TCPKeepAlive" "no" " "
+        fi
+        if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+            # The following CIS parameters aren't applied automagically by scap profiles
+            # CIS 5.2.12
+            log "Applying CIS 5.2.12"
+            set_conf_value "${SSHD_EDIT_FILE}" "X11Forwarding" "no" " "
+            # CIS 5.2.13
+            log "Applying CIS 5.2.13"
+            set_conf_value "${SSHD_EDIT_FILE}" "AllowTcpForwarding" "no" " "
+            # CIS 5.2.15
+            log "Applying CIS 5.2.15"
+            set_conf_value "${SSHD_EDIT_FILE}" "Banner" "/etc/issue.net" " "
+            # CIS 5.2.16
+            log "Applying CIS 5.2.16"
+            set_conf_value "${SSHD_EDIT_FILE}" "MaxAuthTries" "3" " "
+            # CIS 5.2.17
+            log "Applying CIS 5.2.17"
+            set_conf_value "${SSHD_EDIT_FILE}" "MaxStartups" "10:30:60" " "
+            # CIS 5.2.19
+            log "Applying CIS 5.2.19"
+            set_conf_value "${SSHD_EDIT_FILE}" "LoginGraceTime" "60" " "
+            # CIS 5.2.20
+            log "Applying CIS 5.2.20"
+            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveInterval" "120" " "
+            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveCountMax" "3" " "
+        fi
+        sshd_commit_edit
+    fi
 fi
 
-if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
-    # The following CIS parameters aren't applied automagically by scap profiles
-    # CIS 5.2.12
-    log "Applying CIS 5.2.12"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "X11Forwarding" "no" " "
-    if [ -f /etc/ssh/sshd_config.d/50-redhat.conf ]; then
-        log "Patching /etc/ssh/sshd_config.d/50-redhat.conf for CIS 5.2.12"
-        set_conf_value /etc/ssh/sshd_config.d/50-redhat.conf "X11Forwarding" "no" " "
+# sshd uses the first value it obtains for a keyword, and the distribution drop-in sorts before
+# ours, so X11Forwarding has to be turned off there too rather than only in our own file
+if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ] && [ -f /etc/ssh/sshd_config.d/50-redhat.conf ]; then
+    log "Patching /etc/ssh/sshd_config.d/50-redhat.conf for CIS 5.2.12"
+    if sshd_begin_edit /etc/ssh/sshd_config.d/50-redhat.conf; then
+        set_conf_value "${SSHD_EDIT_FILE}" "X11Forwarding" "no" " "
+        sshd_commit_edit
     fi
-    # CIS 5.2.13
-    log "Applying CIS 5.2.13"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "AllowTcpForwarding" "no" " "
-    # CIS 5.2.15
-    log "Applying CIS 5.2.15"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "Banner" "/etc/issue.net" " "
-    # CIS 5.2.16
-    log "Applying CIS 5.2.16"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "MaxAuthTries" "3" " "
-    # CIS 5.2.17
-    log "Applying CIS 5.2.17"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "MaxStartups" "10:30:60" " "
-    # CIS 5.2.19
-    log "Applying CIS 5.2.19"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "LoginGraceTime" "60" " "
-    # CIS 5.2.20
-    log "Applying CIS 5.2.20"
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveInterval" "120" " "
-    set_conf_value /etc/ssh/sshd_config.d/99-el_configurator.conf "ClientAliveCountMax" "3" " "
 fi
 
 # CIS 5.6.12

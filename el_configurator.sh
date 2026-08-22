@@ -587,6 +587,74 @@ EOF
     return 0
 }
 
+sudoers_begin_edit() {
+    # Starts an edit of the sudoers file on a private copy, and puts the path of that copy in
+    # SUDOERS_EDIT_FILE. Change that copy, then call sudoers_commit_edit to validate and apply it.
+    #
+    # A global is used rather than printing the path, because log() writes to stdout and also sets
+    # POST_INSTALL_SCRIPT_GOOD, both of which a command substitution would swallow.
+    #
+    # Optional argument is the sudoers file, defaults to /etc/sudoers (used by tests)
+    # Returns 0 when the copy is ready, 1 otherwise
+    SUDOERS_EDIT_TARGET="${1:-/etc/sudoers}"
+    SUDOERS_EDIT_FILE=""
+
+    if [ ! -f "${SUDOERS_EDIT_TARGET}" ]; then
+        log "No ${SUDOERS_EDIT_TARGET} to edit" "ERROR"
+        return 1
+    fi
+    if ! type visudo > /dev/null 2>&1; then
+        # Refusing beats editing sudoers with no way to check the result
+        log "visudo is not available, refusing to modify ${SUDOERS_EDIT_TARGET} unchecked" "ERROR"
+        return 1
+    fi
+
+    SUDOERS_EDIT_FILE=$(mktemp) || {
+        log "Cannot create a temporary copy of ${SUDOERS_EDIT_TARGET}" "ERROR"
+        SUDOERS_EDIT_FILE=""
+        return 1
+    }
+    if ! cat "${SUDOERS_EDIT_TARGET}" > "${SUDOERS_EDIT_FILE}" 2>> "${LOG_FILE}"; then
+        log "Cannot copy ${SUDOERS_EDIT_TARGET}" "ERROR"
+        rm -f "${SUDOERS_EDIT_FILE}"
+        SUDOERS_EDIT_FILE=""
+        return 1
+    fi
+    return 0
+}
+
+sudoers_commit_edit() {
+    # Validates the copy started by sudoers_begin_edit and only then puts it in place.
+    #
+    # sudo refuses to run at all when sudoers has a syntax error, and the ANSSI profile disables the
+    # root account on EL10, so an unchecked edit here can lock a machine out for good. Everything is
+    # validated together, so a rejected edit leaves the original completely untouched.
+    #
+    # The content is written through the existing file rather than moved over it, which keeps its
+    # inode, permissions and SELinux context exactly as they were.
+    # Returns 0 when the edit is live, 1 when it was rejected
+    local commit_rc=0
+
+    if [ -z "${SUDOERS_EDIT_FILE}" ] || [ ! -f "${SUDOERS_EDIT_FILE}" ]; then
+        log "No sudoers edit in progress to commit" "ERROR"
+        return 1
+    fi
+
+    if ! visudo -cf "${SUDOERS_EDIT_FILE}" >> "${LOG_FILE}" 2>&1; then
+        log "visudo rejected the new ${SUDOERS_EDIT_TARGET}, keeping the current one. See log file" "ERROR"
+        commit_rc=1
+    elif ! cat "${SUDOERS_EDIT_FILE}" > "${SUDOERS_EDIT_TARGET}" 2>> "${LOG_FILE}"; then
+        log "Cannot write ${SUDOERS_EDIT_TARGET}" "ERROR"
+        commit_rc=1
+    else
+        log "Updated ${SUDOERS_EDIT_TARGET}, validated by visudo"
+    fi
+
+    rm -f "${SUDOERS_EDIT_FILE}" > /dev/null 2>&1
+    SUDOERS_EDIT_FILE=""
+    return "${commit_rc}"
+}
+
 uniq_filelines() {
     filename="${1:-false}"
 
@@ -3512,7 +3580,7 @@ set_conf_value /etc/login.defs "PASS_MIN_DAYS" "0" " "
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"
     # Patch sudoers file since noexec is set by default, which prevents sudo
-     if [ "${FLAVOR}" = "rhel" ]; then
+    if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
         # chmod 4111 /usr/bin/sudo is not needed on RHEL normally
     elif [ "${FLAVOR}" = "debian" ]; then
@@ -3520,20 +3588,28 @@ if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     fi
     log "chmod /usr/bin/sudo to setuid root and disabling noexec in sudoers"
     chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
-    sed -i 's/^Defaults noexec/#Defaults noexec/g' /etc/sudoers 2>> "${LOG_FILE}" || log "Failed to sed /etc/sudoers" "ERROR"
+    if sudoers_begin_edit; then
+        sed -i 's/^Defaults noexec/#Defaults noexec/g' "${SUDOERS_EDIT_FILE}" 2>> "${LOG_FILE}" || log "Failed to sed the sudoers copy" "ERROR"
+        sudoers_commit_edit
+    fi
 else
     log "Not altering sudo behavior"
 fi
 
-# Apply CIS 5.3.3
-if sudo -V | grep "sudo-rs" > /dev/null 2>&1; then
-    log "This system uses sudo-rs, which does not support logging input/output. Disabling these settings in sudoers" "ERROR"
-else
-    set_conf_value /etc/sudoers "Defaults logfile" "/var/log/sudo.log" "="
+# Apply CIS 5.3.3 and CIS 5.3.6
+# Both Defaults go in together, so that visudo validates them as one change
+if ! type sudo > /dev/null 2>&1; then
+    log "sudo is not installed, skipping CIS 5.3.3 and CIS 5.3.6"
+elif sudoers_begin_edit; then
+    # Not an ERROR: shipping sudo-rs is a normal state, not a failure of this script
+    if sudo -V 2>/dev/null | grep "sudo-rs" > /dev/null 2>&1; then
+        log "This system uses sudo-rs, which does not support logging input/output. Not setting a sudo logfile"
+    else
+        set_conf_value "${SUDOERS_EDIT_FILE}" "Defaults logfile" "/var/log/sudo.log" "="
+    fi
+    set_conf_value "${SUDOERS_EDIT_FILE}" "Defaults timestamp_timeout" "15" "="
+    sudoers_commit_edit
 fi
-
-# Apply CIS 5.3.6
-set_conf_value /etc/sudoers "Defaults timestamp_timeout" "15" "="
 
 # Apply CIS 1.1.1.1,1.1.1.1,1.1.9,3.1.3
 if [ -d /etc/modprobe.d ]; then

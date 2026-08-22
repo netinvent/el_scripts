@@ -157,28 +157,60 @@ log "Starting EL configurator post install build ${SCRIPT_BUILD} at $(date)"
 get_kernel_arguments() {
     # This allows to set variables from kernel arguments
     # kernel argument NPF_VARIABLE_NAME=value sets VARIABLE_NAME with value
+    # A value containing spaces must be quoted, eg NPF_BRAND_NAME="My Brand"
+    # A value may contain '=' signs, eg NPF_SOME_TOKEN=abc=def
 
-    kernel_arg_prefix="NPF_"
+    local cmdline_file="${1:-/proc/cmdline}"
+    local kernel_arg_prefix="NPF_"
+    local kernel_args remaining matched argument_name argument_value attributes
+    # <prefix>NAME=VALUE where VALUE is either "quoted, possibly containing spaces" or a bare token.
+    # The name is captured loosely here so that a malformed one can be reported rather than skipped.
+    local kernel_arg_regex="(^|[[:space:]])${kernel_arg_prefix}([^=[:space:]]+)=(\"[^\"]*\"|[^[:space:]]*)"
 
-    if [ -f /proc/cmdline ]; then
-        KERNEL_ARGS=$(cat /proc/cmdline)
-        log "Current kernel arguments: ${KERNEL_ARGS}"
-        # Split kernel arguments. We want word splitting here, so no to shellcheck SC2206
-        # shellcheck disable=SC2206
-        KERNEL_ARGS_SPLIT=(${KERNEL_ARGS// / })
-        for argument in "${KERNEL_ARGS_SPLIT[@]}"; do
-            if [ "${argument:0:${#kernel_arg_prefix}}" = "${kernel_arg_prefix}" ]; then
-                argument="${argument:${#kernel_arg_prefix}}"
-                # No need to check SC2206 here neither
-                # shellcheck disable=SC2206
-                argument_split=(${argument//=/ })
-                log "Retrieved variable from kernel arguments: ${argument_split[0]}=${argument_split[1]}"
-                eval "${argument_split[0]}=${argument_split[1]}"
-            fi
-        done
-    else
-        log "Cannot find kernel arguments from /proc/cmdline" "ERROR"
+    if [ ! -f "${cmdline_file}" ]; then
+        log "Cannot find kernel arguments from ${cmdline_file}" "ERROR"
+        return 1
     fi
+
+    kernel_args=$(cat "${cmdline_file}")
+    log "Current kernel arguments: ${kernel_args}"
+
+    remaining="${kernel_args}"
+    while [[ "${remaining}" =~ ${kernel_arg_regex} ]]; do
+        matched="${BASH_REMATCH[0]}"
+        argument_name="${BASH_REMATCH[2]}"
+        argument_value="${BASH_REMATCH[3]}"
+        # Consume what we matched, so the next iteration looks at the rest of the line.
+        # The quotes around ${matched} keep it a literal, not a glob pattern.
+        remaining="${remaining#*"${matched}"}"
+
+        # Drop the surrounding quotes of a quoted value
+        if [ "${argument_value:0:1}" = '"' ]; then
+            argument_value="${argument_value:1:${#argument_value}-2}"
+        fi
+
+        if ! [[ "${argument_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            log "Ignoring kernel argument ${kernel_arg_prefix}${argument_name}: not a valid variable name" "ERROR"
+            continue
+        fi
+
+        # Refuse to overwrite exported variables, so that a boot line cannot repoint PATH, IFS or LD_*
+        attributes=$(declare -p "${argument_name}" 2>/dev/null)
+        attributes="${attributes#declare -}"
+        attributes="${attributes%% *}"
+        case "${attributes}" in
+            *x*)
+                log "Ignoring kernel argument ${kernel_arg_prefix}${argument_name}: would overwrite environment variable ${argument_name}" "ERROR"
+                continue
+                ;;
+        esac
+
+        if printf -v "${argument_name}" '%s' "${argument_value}" 2>> "${LOG_FILE}"; then
+            log "Retrieved variable from kernel arguments: ${argument_name}=${argument_value}"
+        else
+            log "Cannot set variable ${argument_name} from kernel arguments" "ERROR"
+        fi
+    done
 }
 
 # This is a duplicate from the Python script, but since we don't inherit pre settings, we need to redeclare it

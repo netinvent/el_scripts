@@ -752,6 +752,55 @@ sshd_commit_edit() {
     return "${commit_rc}"
 }
 
+set_grub_console_args() {
+    # Replaces the console arguments of a GRUB_CMDLINE_LINUX style setting, leaving every other
+    # kernel argument exactly where it was.
+    #
+    # This used to be a single greedy sed, which silently discarded everything after the first
+    # console= argument. Starting from
+    #   GRUB_CMDLINE_LINUX="console=ttyS0 net.ifnames=0 biosdevname=0 audit=1"
+    # it produced
+    #   GRUB_CMDLINE_LINUX=" console=tty0 console=ttyS0,115200,n8 "
+    # dropping audit=1, which CIS and ANSSI both want, and net.ifnames=0, which renames the network
+    # interfaces on the next boot.
+    #
+    # Arguments: grub defaults file, setting name, console arguments to set
+    # Returns 0 when the setting holds the wanted value, 1 otherwise
+    local grub_file="${1}"
+    local setting="${2}"
+    local console_args="${3}"
+    local current_line current_value kept_args arg
+    local grub_args=()
+
+    if [ ! -f "${grub_file}" ]; then
+        log "No ${grub_file}, cannot set ${setting}" "ERROR"
+        return 1
+    fi
+
+    current_line=$(grep -E "^[[:space:]]*${setting}[[:space:]]*=" "${grub_file}" 2>/dev/null | head -n 1)
+    # Everything after the first '=', with the surrounding quotes taken off. A missing setting
+    # simply leaves this empty, and the value is created from scratch further down.
+    current_value="${current_line#*=}"
+    current_value="${current_value%\"}"
+    current_value="${current_value#\"}"
+
+    # read -a splits on whitespace without globbing, unlike an unquoted expansion
+    read -r -a grub_args <<< "${current_value}"
+    kept_args=""
+    for arg in "${grub_args[@]}"; do
+        [ -z "${arg}" ] && continue
+        # Only the console arguments are replaced, everything else is carried over untouched
+        case "${arg}" in
+            console=*) continue ;;
+        esac
+        kept_args="${kept_args}${kept_args:+ }${arg}"
+    done
+    kept_args="${kept_args}${kept_args:+ }${console_args}"
+
+    log "Setting ${setting} to [${kept_args}] in ${grub_file}"
+    set_conf_value "${grub_file}" "${setting}" "\"${kept_args}\"" "="
+}
+
 uniq_filelines() {
     filename="${1:-false}"
 
@@ -2328,13 +2377,8 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
         grubby --update-kernel=ALL --args="console=tty0 console=ttyS0,115200,n8" || log "Enabling serial getty failed" "ERROR"
         grub2-mkconfig --update-bls-cmdline -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        # Replace existing console arguments
-        if grep "GRUB_CMDLINE_LINUX=.*console.*" /etc/default/grub > /dev/null 2>&1; then
-            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)(console=.*)(.*)"#GRUB_CMDLINE_LINUX=\1 console=tty0 console=ttyS0,115200,n8 \3"#g' /etc/default/grub
-        # Add non existing console arguments
-        else
-            sed -Ei 's#GRUB_CMDLINE_LINUX=(.*)"#GRUB_CMDLINE_LINUX=\1  console=tty0 console=ttyS0,115200,n8"#g' /etc/default/grub
-        fi
+        set_grub_console_args /etc/default/grub "GRUB_CMDLINE_LINUX" "console=tty0 console=ttyS0,115200,n8" \
+            || log "Failed to set console arguments in /etc/default/grub" "ERROR"
         /sbin/grub-mkconfig -o /boot/grub/grub.cfg 2>> "${LOG_FILE}" || log "grub-mkconfig failed" "ERROR"
     else
         log_quit "Cannot setup serial console on this system"

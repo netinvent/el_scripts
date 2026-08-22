@@ -801,6 +801,79 @@ set_grub_console_args() {
     set_conf_value "${grub_file}" "${setting}" "\"${kept_args}\"" "="
 }
 
+configure_firewalld() {
+    # Narrows firewalld to the configured whitelist, on RHEL and clones.
+    #
+    # The kickstart opens ssh to everyone with "firewall --enabled --service ssh", and this narrows
+    # it: the whitelisted sources are bound to a permissive zone, then ssh and cockpit are taken off
+    # the default zone so that nobody else reaches them.
+    #
+    # Every call is firewall-offline-cmd rather than firewall-cmd because this runs in the anaconda
+    # %post chroot, where firewalld is installed but not running.
+    #
+    # The narrowing happens whether or not the sources bound. A hardening script that quietly leaves
+    # ssh open to the world because one whitelist entry was malformed is worse than one that closes
+    # it and says so. What did not bind is checked against the resulting configuration and reported
+    # through the log, the failure banner and the prometheus state metric, for the operator to deal
+    # with.
+    #
+    # Returns 0 when every whitelisted source is bound, 1 otherwise
+    local whitelist_ip firewalld_zone
+    local bound=0 expected=0
+    local unbound=""
+    local firewall_whitelist_ip_array=()
+
+    if [ "${FIREWALL_WHITELIST_IP_LIST}" = "" ]; then
+        # Nothing to narrow to. The kickstart's own "firewall --service ssh" is left standing.
+        log "No firewall whitelist configured, leaving the default firewalld zone as it is"
+        return 0
+    fi
+
+    IFS=':' read -r -a firewall_whitelist_ip_array <<< "${FIREWALL_WHITELIST_IP_LIST}"
+    if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+        firewalld_zone=trusted
+        log "Adding whitelisted IPs to firewalld in trusted zone"
+    else
+        firewalld_zone=dmz
+        log "Adding generic ssh permission for whitelisted IPs to firewalld"
+    fi
+
+    for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
+        expected=$((expected + 1))
+        # Deliberately not treating a non zero exit here as the failure: re-running this script
+        # gives ALREADY_ENABLED for a source that is correctly bound, which used to log an ERROR on
+        # every second run. What the configuration ends up holding is what matters, so ask it.
+        firewall-offline-cmd --zone="${firewalld_zone}" --add-source="${whitelist_ip}" >> "${LOG_FILE}" 2>&1
+        if firewall-offline-cmd --zone="${firewalld_zone}" --query-source="${whitelist_ip}" > /dev/null 2>&1; then
+            bound=$((bound + 1))
+        else
+            unbound="${unbound}${unbound:+ }${whitelist_ip}"
+        fi
+    done
+
+    if [ "${firewalld_zone}" = dmz ] && [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+        log "Adding node exporter whitelisted IPs to firewalld dmz zone"
+        firewall-offline-cmd --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
+    fi
+
+    # Since we allow ip whitelists for all, we should disable ssh & cockpit allowance for everyone else
+    # Using --zone=public here with firewall-offline-cmd results in "Can't use lokkit options with other options" error
+    # Fortunately, the default zone is public
+    firewall-offline-cmd --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
+    firewall-offline-cmd --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
+
+    if [ "${bound}" -eq "${expected}" ]; then
+        log "Firewalld narrowed to ${bound} whitelisted source(s) in zone ${firewalld_zone}"
+        return 0
+    fi
+    if [ "${bound}" -eq 0 ]; then
+        log "None of the ${expected} whitelisted source(s) bound to firewalld zone ${firewalld_zone}, and ssh is now off the default zone: this machine will need console access. Unbound: ${unbound}" "ERROR"
+    else
+        log "Only ${bound} of ${expected} whitelisted source(s) bound to firewalld zone ${firewalld_zone}, and ssh is now off the default zone. Unbound: ${unbound}" "ERROR"
+    fi
+    return 1
+}
+
 configure_ufw() {
     # Sets up ufw from the configured whitelists, on Debian and derivatives.
     #
@@ -2570,31 +2643,11 @@ if [ "${CONFIGURE_FIREWALL}" != false ]; then
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y firewalld 2>> "${LOG_FILE}" || log "Failed to install firewalld" "ERROR"
         # By default, firewalld has ssh and cockpit allowed for public zone
-        # Starting firewalld will not work in postinstall environment, so we will enable it but start it later
-        if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ] ; then
-            IFS=':' read -r -a FIREWALL_WHITELIST_IP_ARRAY <<< "${FIREWALL_WHITELIST_IP_LIST}"
-            if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
-                log "Adding whitelisted IPs to firewalld in trusted zone"
-                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --zone=trusted --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld whitelist" "ERROR"
-                done
-            else
-                log "Adding generic ssh permission for whitelisted IPs to firewalld"
-                for whitelist_ip in "${FIREWALL_WHITELIST_IP_ARRAY[@]}"; do
-                    firewall-offline-cmd --zone=dmz --add-source="${whitelist_ip}" 2>> "${LOG_FILE}" || log "Failed to add ${whitelist_ip} to firewalld dmz zone" "ERROR"
-                done
-                if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
-                    log "Adding node exporter whitelisted IPs to firewalld dmz zone"
-                    firewall-offline-cmd --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
-                fi
-            fi
-            # Since we allow ip whitelists for all, we should disable ssh & cockpit allowance for everyone else
-            # Using --zone=public here with firewall-offline-cmd results in "Can't use lokkit options with other options" error
-            # Fortunately, the default zone is public
-            firewall-offline-cmd --remove-service=ssh 2>> "${LOG_FILE}" || log "Failed to remove ssh from public zone in firewalld" "ERROR"
-            firewall-offline-cmd --remove-service=cockpit 2>> "${LOG_FILE}" || log "Failed to remove cockpit from public zone in firewalld" "ERROR"
-        fi
-
+        # kickstart enables firewalld with "firewall --enabled --service ssh", and starting it
+        # will not work in the postinstall environment, so the config is written offline here
+        configure_firewalld
+        systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to enable firewalld" "ERROR"
+        systemctl start firewalld || log "Cannot start firewalld. This happens in kickstart environment, but not in production"
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         configure_ufw

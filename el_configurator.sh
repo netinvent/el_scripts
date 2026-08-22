@@ -3,7 +3,7 @@
 # Security & basic setup configuration script from NetPerfect
 # Works with RHEL / AlmaLinux / RockyLinux / CentOS EL8, EL9 and EL10
 # Works with Debian 12
-# Works with Debian 13, although atm no scap profile is available as of 27-08-2025
+# Works with Debian 13, scap profiles available since ssg 0.1.80 which ships ssg-debian13-ds.xml
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
 SCRIPT_BUILD="2026081901"
@@ -50,6 +50,23 @@ EOF
 SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
+
+# SCAP Security Guide packages for Debian 12+.
+# Debian's own suites trail one release for SCAP content: bookworm ships ssg 0.1.65, which carries
+# no debian12 datastream, and trixie ships 0.1.76, which carries no debian13 one. So the packages
+# have to be pulled from the archive pool rather than installed with apt.
+# A .deb taken out of the pool carries no signature apt can check, which is why every file below is
+# pinned to the sha256 Debian publishes for it and verified before anything is installed.
+# To move to a newer release, replace every line below with the values from
+# https://packages.debian.org/sid/all/<package>/download
+SSG_DEBIAN_POOL_URL="https://deb.debian.org/debian/pool/main/s/scap-security-guide"
+SSG_DEBIAN_PACKAGES=$(cat << 'EOF'
+fdb92f480cd782fde407123bd3d20860d9d4e26faa21eca738cb7cf78ebf6204  ssg-base_0.1.80-1_all.deb
+aa72d05f04dd9a5f5da961a255ed643aa6b08c07f17579a7091d19ae3e2b931c  ssg-debian_0.1.80-1_all.deb
+735682488025215454e3e82ab9a6f2965d1c1e5bd5ed64219a1fdfc71617facd  ssg-applications_0.1.80-1_all.deb
+a8e4e4424364b1caae12a2a9ae412bea3f79493c2ec1d2ebaa5f8e92f53d8cda  ssg-debderived_0.1.80-1_all.deb
+EOF
+)
 
 # By default, ANSSI profiles disables sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
 ALLOW_SUDO=false
@@ -469,6 +486,107 @@ set_conf_value() {
     return 1
 }
 
+install_ssg_content() {
+    # Installs the SCAP Security Guide content for the release being hardened.
+    #
+    # The distribution packages are preferred, because apt verifies their signatures for us.
+    # Debian freezes its archive at release while SCAP content for a release lands upstream
+    # afterwards, so the shipped ssg usually covers the previous release rather than this one:
+    # as of 2026-08, bookworm ships 0.1.65 with no debian12 datastream and trixie ships 0.1.76
+    # with no debian13 one. Only when the datastream we actually need is missing do we fall back
+    # to the pinned download, so that fallback stops happening on its own once Debian catches up.
+    #
+    # Argument is the datastream the rest of the script will hand to oscap
+    # Returns 0 when that datastream is present, 1 otherwise
+    local datastream="${1}"
+
+    log "Installing ssg openscap data from the distribution"
+    # Not an ERROR: the pinned packages below are the supported way out of this
+    apt-get install -y ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" \
+        || log "Distribution ssg packages are unavailable, will try the pinned ones"
+
+    if [ -f "${datastream}" ]; then
+        log "Distribution ssg provides ${datastream}"
+        return 0
+    fi
+
+    log "Distribution ssg does not provide ${datastream}, falling back to pinned ssg packages"
+    install_ssg_debian_packages || return 1
+
+    if [ -f "${datastream}" ]; then
+        log "Pinned ssg packages provide ${datastream}"
+        return 0
+    fi
+    log "Still no ${datastream} after installing the pinned ssg packages" "ERROR"
+    return 1
+}
+
+install_ssg_debian_packages() {
+    # Downloads the pinned SCAP Security Guide packages, verifies each one against the sha256
+    # Debian publishes for it, and only then installs them.
+    # dpkg cannot check a signature on a .deb pulled out of the pool, so those checksums are the
+    # only thing standing between a tampered download and maintainer scripts running as root.
+    # A checksum mismatch aborts the install rather than degrading to an unverified one.
+    # Returns 0 when every package is installed, 1 otherwise
+    local ssg_dir package_file package_files download_rc install_rc
+
+    if [ -z "${SSG_DEBIAN_PACKAGES}" ]; then
+        log "No ssg packages are pinned, cannot install SCAP content" "ERROR"
+        return 1
+    fi
+
+    ssg_dir=$(mktemp -d) || {
+        log "Cannot create temporary directory for ssg packages" "ERROR"
+        return 1
+    }
+    printf '%s\n' "${SSG_DEBIAN_PACKAGES}" > "${ssg_dir}/SHA256SUMS"
+
+    package_files=""
+    download_rc=0
+    while read -r _ package_file; do
+        [ -z "${package_file}" ] && continue
+        log "Downloading ${package_file}"
+        if type curl > /dev/null 2>&1; then
+            # --fail matters here: without it curl saves an HTTP error page as if it were the .deb
+            curl -sSfL --connect-timeout 30 --output "${ssg_dir}/${package_file}" "${SSG_DEBIAN_POOL_URL}/${package_file}" 2>> "${LOG_FILE}" || download_rc=1
+        elif type wget > /dev/null 2>&1; then
+            wget -q --timeout=30 -O "${ssg_dir}/${package_file}" "${SSG_DEBIAN_POOL_URL}/${package_file}" 2>> "${LOG_FILE}" || download_rc=1
+        else
+            log "No curl nor wget available to download ssg packages" "ERROR"
+            download_rc=1
+        fi
+        [ "${download_rc}" -ne 0 ] && break
+        package_files="${package_files} ./${package_file}"
+    done << EOF
+${SSG_DEBIAN_PACKAGES}
+EOF
+
+    if [ "${download_rc}" -ne 0 ]; then
+        log "Cannot download ssg packages, SCAP content will be missing" "ERROR"
+        rm -rf "${ssg_dir}"
+        return 1
+    fi
+
+    if ! (cd "${ssg_dir}" && sha256sum -c SHA256SUMS) >> "${LOG_FILE}" 2>&1; then
+        log "Checksum verification failed for ssg packages, refusing to install them. See log file" "ERROR"
+        rm -rf "${ssg_dir}"
+        return 1
+    fi
+    log "All ssg packages match their pinned sha256"
+
+    # apt-get resolves the dependencies between these packages, dpkg -i would need the right order
+    # We actually want word splitting here
+    # shellcheck disable=SC2086
+    (cd "${ssg_dir}" && apt-get install -y ${package_files}) 2>> "${LOG_FILE}"
+    install_rc=$?
+    rm -rf "${ssg_dir}"
+    if [ "${install_rc}" -ne 0 ]; then
+        log "Cannot install ssg packages" "ERROR"
+        return 1
+    fi
+    return 0
+}
+
 uniq_filelines() {
     filename="${1:-false}"
 
@@ -527,6 +645,8 @@ if [ $? -eq 0 ]; then
 fi
 
 if [ "${SCAP_PROFILE}" != false ]; then  
+    # Datastream oscap will be pointed at, eg /usr/share/xml/scap/ssg/content/ssg-debian13-ds.xml
+    SSG_DATASTREAM="/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
     # Disable --fetch-remote-resources on machines without internet
     if [ ! -d /root/openscap_report ]; then
         mkdir /root/openscap_report 2>> "${LOG_FILE}" || log "Failed to create /root/openscap_report directory" "ERROR"
@@ -540,29 +660,8 @@ if [ "${SCAP_PROFILE}" != false ]; then
         # Limit to debian only, no ubuntu support for openscap, so we need to check for DIST instead of simply FLAVOR to be debian
         elif [ "${FLAVOR}" = "debian" ] && [ "${DIST}" = "debian" ]; then
             log "Installing openscap utils"
-                apt install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
-            if [ "${RELEASE}" -ge 12 ]; then
-                log "Downloading up ssg openscap data for debian 12+"
-                if type curl > /dev/null 2>&1; then
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with curl" "ERROR"
-                    curl -OL http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with curl" "ERROR"
-                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with curl" "ERROR"
-                    curl -OL https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with curl" "ERROR"
-                elif type wget > /dev/null 2>&1; then
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-base_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be downloaded with wget" "ERROR"
-                    wget http://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debian_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be downloaded with wget" "ERROR"
-                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-applications_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be downloaded with wget" "ERROR"
-                    wget https://ftp.debian.org/debian/pool/main/s/scap-security-guide/ssg-debderived_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be downloaded with wget" "ERROR"
-                else
-                    log "No curl nor wget available to download OpenSCAP new deb 12 profiles" "ERROR"
-                fi
-                dpkg -i ssg-base_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-base cannot be installed" "ERROR"
-                dpkg -i ssg-debian_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debian cannot be installed" "ERROR"
-                dpkg -i ssg-applications_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-applications cannot be installed" "ERROR"
-                dpkg -i ssg-debderived_0.1.80-1_all.deb 2>> "${LOG_FILE}" || log "OpenSCAP new deb 12 profiles ssg-debderived cannot be installed" "ERROR"
-            else
-                apt install -y ssg-base ssg-debderived ssg-debian ssg-applications 2>> "${LOG_FILE}" || log "ssg tools are missing and cannot be installed" "ERROR"
-            fi
+            apt install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            install_ssg_content "${SSG_DATASTREAM}" || log "SCAP content is unavailable, remediation cannot run" "ERROR"
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi
@@ -571,25 +670,25 @@ if [ "${SCAP_PROFILE}" != false ]; then
         # Note: on certain debian 12 setups, oscap is stuck forever with anssi_bp_28_high profile when doing FS checks
         # In that case, one can exclude the specific rules that are causing the issue until a stable SSG gets released
         #DEBIAN_12_SKIP_RULES="--skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions
-        #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         
-        oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         # exit code 2 means rules have been partially applied, which can be normal
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results with remote resources"
-            oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     else
         log "Setting up scap profile ${SCAP_PROFILE} without internet"
-        oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > /root/openscap_report/actions.log 2>&1
+        oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         if [ $? -eq 1 ]; then
             log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results without internet"
-            oscap xccdf generate guide --profile ${SCAP_PROFILE} "/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
+            oscap xccdf generate guide --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     fi

@@ -150,7 +150,13 @@ DISABLE_APPARMOR_RUNC_PROFILE=true
 
 VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
 
-KERNELS_TO_KEEP=2 # Number of kernels to keep on the system, older ones will be removed (flattens false positives in SIEMs)
+# Number of kernels to keep on the system, older ones will be removed (flattens false positives in SIEMs)
+#   RHEL 8-10    dnf's installonly_limit caps future installs, and the surplus kernels already on
+#                disk are removed straight away
+#   Debian 13    apt applies APT::NeverAutoRemove::KernelCount on autoremove. Apt always keeps the
+#                running kernel and the latest one, so any value below 2 is ignored
+#   Debian 12    Value is wrtitten but old apt doesn't honour it
+KERNELS_TO_KEEP=2
 
 LOG_FILE=/root/.el-configurator.log
 
@@ -808,6 +814,102 @@ set_grub_console_args() {
     set_conf_value "${grub_file}" "${setting}" "\"${kept_args}\"" "="
 }
 
+dnf_remove_old_kernels() {
+    # Removes the kernels older than the last KERNELS_TO_KEEP, on RHEL and clones.
+    #
+    # The list is captured before anything is removed, because a freshly installed machine has
+    # nothing old enough and "dnf remove -y" with no package argument exits non zero. Feeding the
+    # query straight into dnf meant an ordinary install logged an ERROR, printed the FAILURE banner
+    # and published el_configurator_state 1, so the healthy case looked like a failed hardening run.
+    # That is how operators learn to ignore a red signal.
+    #
+    # Returns 0 when there was nothing to do or the removal worked, 1 otherwise
+    local old_kernels
+
+    if ! old_kernels=$(dnf repoquery --installonly --latest-limit=-"${KERNELS_TO_KEEP}" 2>> "${LOG_FILE}"); then
+        log "Cannot list the kernels to remove" "ERROR"
+        return 1
+    fi
+    if [ -z "${old_kernels}" ]; then
+        log "No kernel older than the last ${KERNELS_TO_KEEP} to remove"
+        return 0
+    fi
+
+    # repoquery returns one package per line, flattened here so the log entry stays on one line
+    log "Removing kernels older than the last ${KERNELS_TO_KEEP}: ${old_kernels//$'\n'/ }"
+    # We actually want word splitting here
+    # shellcheck disable=SC2086
+    if ! dnf remove -y ${old_kernels} 2>> "${LOG_FILE}"; then
+        log "Failed to remove old kernels" "ERROR"
+        return 1
+    fi
+    return 0
+}
+
+repository_is_enabled() {
+    # Asks dnf whether a repository is currently enabled.
+    #
+    # Only the first field of each line is compared, which is the repo id, because dnf4 and dnf5
+    # print different columns after it and dnf5 adds a status column of its own. The header line
+    # starts with "repo", so it cannot collide with a real id.
+    #
+    # Arguments: the repository id
+    # Returns 0 when the repository is enabled, 1 otherwise
+    local repository="${1}"
+
+    [ -z "${repository}" ] && return 1
+    dnf repolist --enabled 2>/dev/null | awk '{print $1}' | grep -qxF -e "${repository}"
+}
+
+enable_crb_repository() {
+    # Enables the repository that EPEL packages routinely depend on. Its name, and the way to turn
+    # it on, both change across the releases this script supports:
+    #
+    #   AlmaLinux / Rocky / CentOS 8      powertools
+    #   AlmaLinux / Rocky / CentOS 9, 10  crb
+    #   subscribed RHEL                   codeready-builder-for-rhel-<release>-<arch>-rpms, and it
+    #                                     is a subscription-manager repository, not a dnf one
+    #
+    # On top of that, EL10 ships dnf5, whose config-manager dropped --set-enabled in favour of an
+    # enable subcommand. Hardcoding "dnf config-manager --set-enabled crb" therefore only ever
+    # worked on the EL9 clones, and failed silently everywhere else.
+    #
+    # The outcome is read back from dnf rather than taken from an exit code, so a repository that is
+    # already on, which is the default on AlmaLinux 10 since 2025-09-09, is not called a failure.
+    # Returns 0 when the repository ends up enabled, 1 otherwise
+    local crb_repo
+
+    if [ "${DIST}" = "rhel" ]; then
+        crb_repo="codeready-builder-for-rhel-${RELEASE}-$(uname -m)-rpms"
+    elif [ "${RELEASE}" -eq 8 ]; then
+        crb_repo="powertools"
+    else
+        crb_repo="crb"
+    fi
+
+    if repository_is_enabled "${crb_repo}"; then
+        log "Repository ${crb_repo} is already enabled"
+        return 0
+    fi
+
+    log "Enabling repository ${crb_repo}"
+    if [ "${DIST}" = "rhel" ]; then
+        subscription-manager repos --enable "${crb_repo}" >> "${LOG_FILE}" 2>&1
+    elif [ "${RELEASE}" -ge 10 ]; then
+        # dnf5
+        dnf config-manager enable "${crb_repo}" >> "${LOG_FILE}" 2>&1
+    else
+        dnf config-manager --set-enabled "${crb_repo}" >> "${LOG_FILE}" 2>&1
+    fi
+
+    if repository_is_enabled "${crb_repo}"; then
+        log "Enabled repository ${crb_repo}"
+        return 0
+    fi
+    log "Cannot enable repository ${crb_repo}, EPEL packages that depend on it may fail to install" "ERROR"
+    return 1
+}
+
 disable_existing_ntp_sources() {
     # Comments out the time sources the distribution configured, so that only NTP_SERVERS is left.
     #
@@ -1230,7 +1332,7 @@ if [ $? -eq 0 ]; then
         # We actually want word splitting here
         # shellcheck disable=SC2086
         dnf install -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
-        dnf config-manager --set-enabled crb 2>> "${LOG_FILE}" || log "Failed to enable crb" "ERROR"
+        enable_crb_repository
         if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
             dnf install -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
         fi
@@ -3909,8 +4011,7 @@ if [ "${KERNELS_TO_KEEP}" -ne 0 ]; then
     log "Setting number of kernels to keep to ${KERNELS_TO_KEEP}"
     if [ "${FLAVOR}" = "rhel" ]; then
         set_conf_value /etc/dnf/dnf.conf "installonly_limit" "${KERNELS_TO_KEEP}" "=" || log "Failed to set installonly_limit in /etc/dnf/dnf.conf" "ERROR"
-        # shellcheck disable=SC2046
-        dnf remove -y $(dnf repoquery --installonly --latest-limit=-"${KERNELS_TO_KEEP}") 2>> "${LOG_FILE}" || log "Failed to remove old kernels" "ERROR"
+        dnf_remove_old_kernels
     elif [ "${FLAVOR}" = "debian" ]; then
         cat << EOF > /etc/apt/apt.conf.d/01autoremove-kernels
 APT::NeverAutoRemove::KernelCount "${KERNELS_TO_KEEP}";

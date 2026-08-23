@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+# Regenerates ks.el9-10.cfg whenever one of the files it embeds is part of the commit, and stages
+# the result, so the kickstart can never be committed lagging behind the scripts inside it.
+#
+# Install with:  git config core.hooksPath .githooks
+#
+# The kickstart is built from the *staged* content rather than the working tree. Committing a
+# kickstart built from unstaged edits would put code in it that is not in the commit, which is a
+# subtler version of the drift this hook exists to prevent.
+
+REPO_DIR=$(git rev-parse --show-toplevel) || exit 0
+GENERATOR="${REPO_DIR}/kickstart_source_script/generate_kickstart.sh"
+TEMPLATE_REL="kickstart_source_script/ks.el9-10.cfg.in"
+EL_CONFIGURATOR_REL="el_configurator.sh"
+PARTITION_CREATOR_REL="kickstart_source_script/kickstart_partition_creator.py"
+OUTPUT_REL="ks.el9-10.cfg"
+
+[ -x "${GENERATOR}" ] || [ -f "${GENERATOR}" ] || exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Nothing to do unless one of the inputs is in this commit
+case $'\n'"${staged}"$'\n' in
+    *$'\n'"${EL_CONFIGURATOR_REL}"$'\n'*|*$'\n'"${PARTITION_CREATOR_REL}"$'\n'*|*$'\n'"${TEMPLATE_REL}"$'\n'*) ;;
+    *) exit 0 ;;
+esac
+
+staging_dir=$(mktemp -d) || exit 0
+trap 'rm -rf "${staging_dir}"' EXIT
+
+# Materialise exactly what is being committed. A file that is unchanged in this commit is not in the
+# index diff but is still in the index, so :path resolves for all three either way.
+for rel in "${TEMPLATE_REL}" "${EL_CONFIGURATOR_REL}" "${PARTITION_CREATOR_REL}"; do
+    mkdir -p "${staging_dir}/$(dirname "${rel}")"
+    if ! git show ":${rel}" > "${staging_dir}/${rel}" 2>/dev/null; then
+        printf 'pre-commit: cannot read staged %s, skipping the kickstart rebuild\n' "${rel}" >&2
+        exit 0
+    fi
+done
+
+if ! bash "${GENERATOR}" \
+        --template "${staging_dir}/${TEMPLATE_REL}" \
+        --el-configurator "${staging_dir}/${EL_CONFIGURATOR_REL}" \
+        --partition-creator "${staging_dir}/${PARTITION_CREATOR_REL}" \
+        --output "${REPO_DIR}/${OUTPUT_REL}"; then
+    printf 'pre-commit: the kickstart could not be regenerated, commit aborted\n' >&2
+    exit 1
+fi
+
+if ! git diff --quiet -- "${OUTPUT_REL}" || ! git diff --cached --quiet -- "${OUTPUT_REL}"; then
+    git add -- "${OUTPUT_REL}" || {
+        printf 'pre-commit: cannot stage %s, commit aborted\n' "${OUTPUT_REL}" >&2
+        exit 1
+    }
+    printf 'pre-commit: rebuilt and staged %s\n' "${OUTPUT_REL}"
+fi
+
+exit 0

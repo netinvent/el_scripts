@@ -3973,7 +3973,7 @@ if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ] && [ -f /etc/ssh/sshd_config.d/
 fi
 
 # CIS 5.6.12
-log "Applying CIS 5.6.12"
+log "Applying CIS 5.6.12 with deviation to allow multiple password changes"
 set_conf_value /etc/login.defs "PASS_MIN_DAYS" "0" " "
 
 if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then

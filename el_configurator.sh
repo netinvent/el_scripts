@@ -112,6 +112,9 @@ CONFIGURE_FIREWALL=true
 #NTP_SERVERS="192.168.200.254:10.0.0.1"
 NTP_SERVERS=""
 
+# Add NTP servers or replace existing default OS settings
+REPLACE_EXISTING_NTP=false
+
 # Optional whitelist IPs / CIDR for firewall, semicolon separated
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24:10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
@@ -417,6 +420,10 @@ set_conf_value() {
     # name = value if separator = ' = '
     # Every write is read back before returning, so a directive that did not land raises an ERROR
     # instead of being reported as applied
+
+    # This is only used for single values in a file
+    # Do not use if files contain multiple entries with the same name
+
     # Returns 0 when the file holds the requested value, 1 otherwise
     local file="${1}"
     local name="${2}"
@@ -799,6 +806,138 @@ set_grub_console_args() {
 
     log "Setting ${setting} to [${kept_args}] in ${grub_file}"
     set_conf_value "${grub_file}" "${setting}" "\"${kept_args}\"" "="
+}
+
+disable_existing_ntp_sources() {
+    # Comments out the time sources the distribution configured, so that only NTP_SERVERS is left.
+    #
+    # Three kinds of line are turned off: pool, server, and any sourcedir other than the one this
+    # script writes into. That last exception matters: on Debian our own servers are read through
+    # sourcedir /etc/chrony/sources.d, so disabling every sourcedir would switch off the very
+    # servers we are configuring. On RHEL there is no such exception, we write to chrony.conf
+    # directly, and the sourcedir that does get disabled is /run/chrony-dhcp, which is the point,
+    # since a DHCP server could otherwise keep injecting time sources.
+    #
+    # Lines are commented rather than deleted, so the original configuration stays readable.
+    # Servers this script itself configures are left alone, otherwise a second run would comment
+    # them out and then add them back.
+    #
+    # Arguments: the main chrony configuration file, and the sourcedir to keep (may be empty)
+    # Returns 0 on success, 1 otherwise
+    local chrony_conf="${1}"
+    local keep_sourcedir="${2}"
+    local tmp_conf line directive rest sourcedir_path keep_line ntp_server
+    local disabled=0
+    local ntp_server_array=()
+
+    if [ ! -f "${chrony_conf}" ]; then
+        log "No ${chrony_conf}, cannot replace the existing NTP sources" "ERROR"
+        return 1
+    fi
+
+    IFS=':' read -r -a ntp_server_array <<< "${NTP_SERVERS}"
+
+    tmp_conf=$(mktemp) || {
+        log "Cannot create a temporary copy of ${chrony_conf}" "ERROR"
+        return 1
+    }
+
+    while IFS= read -r line || [ -n "${line}" ]; do
+        # First word of the line, leading whitespace ignored. chrony directive names are not case
+        # sensitive, so compare in lower case.
+        read -r directive rest <<< "${line}"
+        directive=$(printf '%s' "${directive}" | tr '[:upper:]' '[:lower:]')
+        keep_line=true
+        case "${directive}" in
+            pool)
+                keep_line=false
+                ;;
+            server)
+                keep_line=false
+                for ntp_server in "${ntp_server_array[@]}"; do
+                    if [ -n "${ntp_server}" ] && [ "${line}" = "server ${ntp_server} iburst" ]; then
+                        keep_line=true
+                        break
+                    fi
+                done
+                ;;
+            sourcedir)
+                sourcedir_path="${rest%%[[:space:]]*}"
+                if [ -z "${keep_sourcedir}" ] || [ "${sourcedir_path}" != "${keep_sourcedir}" ]; then
+                    keep_line=false
+                fi
+                ;;
+        esac
+        if [ "${keep_line}" = true ]; then
+            printf '%s\n' "${line}" >> "${tmp_conf}"
+        else
+            printf '# Disabled by el_configurator, REPLACE_EXISTING_NTP is set: %s\n' "${line}" >> "${tmp_conf}"
+            disabled=$((disabled + 1))
+        fi
+    done < "${chrony_conf}"
+
+    # Written through the existing file rather than moved over it, which keeps its inode and so its
+    # permissions and SELinux context
+    if ! cat "${tmp_conf}" > "${chrony_conf}" 2>> "${LOG_FILE}"; then
+        log "Cannot write ${chrony_conf}" "ERROR"
+        rm -f "${tmp_conf}"
+        return 1
+    fi
+    rm -f "${tmp_conf}"
+
+    log "Disabled ${disabled} distribution time source line(s) in ${chrony_conf}"
+    return 0
+}
+
+configure_ntp_servers() {
+    # Adds the configured NTP servers to chrony's configuration.
+    #
+    # The paths are not interchangeable between distributions, and using the Debian ones on RHEL is
+    # why this silently did nothing there for a long time. RHEL 8, 9 and 10 all read
+    # /etc/chrony.conf, and their chrony package owns no sources directory at all: there is no
+    # /etc/chrony/ and no /etc/chrony.d/. Debian keeps its configuration under /etc/chrony/ and
+    # ships /etc/chrony/sources.d with a sourcedir directive already pointing at it.
+    #
+    # server is a repeatable directive, so set_conf_value is deliberately not used here. That helper
+    # models a single valued key: it would rewrite the first matching line, which on RHEL means
+    # collapsing the pool lines, or worse the sourcedir that feeds DHCP supplied time servers.
+    # Lines are appended only when absent instead, which also makes a second run a no-op.
+    #
+    # Arguments: the chrony file to add the servers to
+    # Returns 0 when every configured server is present in that file, 1 otherwise
+    local ntp_file="${1}"
+    local ntp_server ntp_line
+    local missing=0
+    local ntp_server_array=()
+
+    if [ -z "${NTP_SERVERS}" ]; then
+        return 0
+    fi
+    if [ ! -f "${ntp_file}" ] && [ ! -d "$(dirname "${ntp_file}")" ]; then
+        log "Neither ${ntp_file} nor its directory exist, cannot configure NTP" "ERROR"
+        return 1
+    fi
+
+    IFS=':' read -r -a ntp_server_array <<< "${NTP_SERVERS}"
+    for ntp_server in "${ntp_server_array[@]}"; do
+        [ -z "${ntp_server}" ] && continue
+        ntp_line="server ${ntp_server} iburst"
+        if grep -qFx -e "${ntp_line}" -- "${ntp_file}" 2>/dev/null; then
+            log "NTP server ${ntp_server} is already configured in ${ntp_file}"
+            continue
+        fi
+        echo "${ntp_line}" >> "${ntp_file}" 2>> "${LOG_FILE}"
+        # Read back rather than trusting the redirection, so a read only or full filesystem is
+        # reported instead of passing as configured
+        if grep -qFx -e "${ntp_line}" -- "${ntp_file}" 2>/dev/null; then
+            log "Added NTP server ${ntp_server} to ${ntp_file}"
+        else
+            log "Cannot add NTP server ${ntp_server} to ${ntp_file}" "ERROR"
+            missing=$((missing + 1))
+        fi
+    done
+
+    [ "${missing}" -eq 0 ]
 }
 
 configure_firewalld() {
@@ -2713,27 +2852,38 @@ fi
 # Configure NTP if given
 if [ "${NTP_SERVERS}" != "" ]; then
     log "Setting up NTP servers: ${NTP_SERVERS//:/ }"
+    ntp_conf_file=""
+    chrony_main_conf=""
+    ntp_sources_dir=""
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
         chrony_svc=chronyd
+        # EL8, EL9 and EL10 all read /etc/chrony.conf, and the package owns no sources directory
+        ntp_conf_file=/etc/chrony.conf
+        chrony_main_conf=/etc/chrony.conf
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
         chrony_svc=chrony
+        # Debian ships /etc/chrony/sources.d together with the sourcedir directive that reads it
+        ntp_conf_file=/etc/chrony/sources.d/local-ntp-server.sources
+        chrony_main_conf=/etc/chrony/chrony.conf
+        ntp_sources_dir=/etc/chrony/sources.d
+        if [ ! -d /etc/chrony/sources.d ]; then
+            mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+        fi
     else
         log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
     fi
-    if [ ! -d /etc/chrony/sources.d ]; then
-        mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+    if [ -n "${ntp_conf_file}" ]; then
+        # Disabling comes first, so that the servers added below are never commented out themselves
+        if [ "${REPLACE_EXISTING_NTP}" != false ]; then
+            log "Replacing the distribution time sources with ${NTP_SERVERS//:/ }"
+            disable_existing_ntp_sources "${chrony_main_conf}" "${ntp_sources_dir}" || log "Failed to disable the existing NTP sources in ${chrony_main_conf}" "ERROR"
+        fi
+        configure_ntp_servers "${ntp_conf_file}" || log "Some NTP servers could not be configured, time synchronisation may be incomplete" "ERROR"
+        systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
+        systemctl start "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"
     fi
-    set_conf_value "/etc/chrony/chrony.conf" "include" "/etc/chrony/sources.d/*.conf" " "|| log "Failed to set include for chrony conf" "ERROR"
-    IFS=':' read -r -a NTP_SERVER_ARRAY <<< "${NTP_SERVERS}"
-    local_ntp_file="/etc/chrony/sources.d/local-ntp-server.sources"
-    for ntp_server in "${NTP_SERVER_ARRAY[@]}"; do
-        echo "server ${ntp_server} iburst" >> "${local_ntp_file}" 2>> "${LOG_FILE}" || log "Failed to add ${ntp_server} to ${local_ntp_file}" "ERROR"
-        uniq_filelines "${local_ntp_file}"
-    done
-    systemctl enable "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to enable ${chrony_svc}" "ERROR"
-    systemctl start "${chrony_svc}" 2>> "${LOG_FILE}" || log "Failed to start ${chrony_svc}" "ERROR"
 fi
 
 

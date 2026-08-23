@@ -846,6 +846,63 @@ dnf_remove_old_kernels() {
     return 0
 }
 
+harden_node_exporter_service() {
+    # Trims the systemd unit the vendored installer writes.
+    #
+    # That unit is shaped for a container runtime installer rather than a metrics exporter: it
+    # delegates a cgroup subtree and lifts the process, task and core dump limits entirely.
+    # LimitCORE=infinity also pulls against the CIS 1.5.1 and 1.5.2 core dump controls this script
+    # applies elsewhere, so the machine ends up asking for two different things at once.
+    #
+    # This is written as a drop-in rather than patched into the vendored installer, for three
+    # reasons: the embedded copy stays byte for byte identical to upstream and so stays diffable
+    # against it, re-running the installer cannot quietly undo the change, and the override is
+    # visible as our own decision instead of hidden in someone else's code.
+    #
+    # Explicit values are used rather than empty assignments, because resetting a Limit directive to
+    # its default with an empty string is not documented behaviour.
+    #
+    # The service still runs as root. Moving it to a user of its own needs the systemd and logind
+    # collectors to keep reaching D-Bus and the textfile collector directory to stay readable by
+    # that user, which wants a test boot rather than a configuration line.
+    # Returns 0 when the drop-in is in place, 1 otherwise
+    local dropin_dir="/etc/systemd/system/node_exporter.service.d"
+    local dropin="${dropin_dir}/99-el_configurator.conf"
+
+    if [ ! -d "${dropin_dir}" ]; then
+        mkdir -p "${dropin_dir}" 2>> "${LOG_FILE}" || {
+            log "Cannot create ${dropin_dir}" "ERROR"
+            return 1
+        }
+    fi
+
+    cat << 'EOF' > "${dropin}" 2>> "${LOG_FILE}"
+# Written by el_configurator. The unit this overrides comes from the vendored node_exporter
+# installer, which inherits its shape from a container runtime installer.
+[Service]
+# A metrics exporter has no cgroup subtree to manage
+Delegate=no
+# No core dumps, matching CIS 1.5.1 and 1.5.2, which the unit otherwise contradicts
+LimitCORE=0
+# Generous for a Go binary, which needs threads rather than processes, but no longer unlimited
+LimitNPROC=512
+TasksMax=512
+# Cannot gain privileges through execve, even while still running as root
+NoNewPrivileges=true
+EOF
+
+    if [ ! -s "${dropin}" ]; then
+        log "Cannot write ${dropin}" "ERROR"
+        return 1
+    fi
+    log "Restricted the node_exporter service through ${dropin}"
+
+    # Starting and reloading do not work in the install environment, so these are not errors there
+    systemctl daemon-reload 2>> "${LOG_FILE}" || log "Cannot reload systemd, the node_exporter limits apply on next boot"
+    systemctl restart node_exporter 2>> "${LOG_FILE}" || log "Cannot restart node_exporter, the new limits apply on next boot"
+    return 0
+}
+
 repository_is_enabled() {
     # Asks dnf whether a repository is currently enabled.
     #
@@ -3895,6 +3952,7 @@ NODE_EXPORTER_INSTALLER_EOF
             sh "${node_exporter_installer}" 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
         fi
         rm -f "${node_exporter_installer}" > /dev/null 2>&1
+        harden_node_exporter_service
     else
         log "No node_exporter installed" "ERROR"
     fi

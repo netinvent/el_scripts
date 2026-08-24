@@ -1386,7 +1386,7 @@ if [ $? -eq 0 ]; then
     fi
 fi
 
-if [ "${SCAP_PROFILE}" != false ]; then  
+if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then  
     # Datastream oscap will be pointed at, eg /usr/share/xml/scap/ssg/content/ssg-debian13-ds.xml
     SSG_DATASTREAM="/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
     # Disable --fetch-remote-resources on machines without internet
@@ -4233,8 +4233,8 @@ fi
 log "Applying CIS 5.6.12 with deviation to allow multiple password changes"
 set_conf_value /etc/login.defs "PASS_MIN_DAYS" "0" " "
 
-if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
-    log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE}"
+if [ "${ALLOW_SUDO}" = true ] && [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
+    log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE} which disallows it"
     # Patch sudoers file since noexec is set by default, which prevents sudo
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"

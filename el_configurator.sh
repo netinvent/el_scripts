@@ -151,6 +151,11 @@ DISABLE_APPARMOR_RUNC_PROFILE=true
 
 VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
 
+# Maximum disk space the persistent journal may use, for example 2G, 500M, or a percentage of the
+# filesystem such as 10%. Empty disables the limit and leaves system defaults
+JOURNAL_MAX_SIZE="2G"
+#JOURNAL_MAX_SIZE=""
+
 # Number of kernels to keep on the system, older ones will be removed (flattens false positives in SIEMs)
 #   RHEL 8-10    dnf's installonly_limit caps future installs, and the surplus kernels already on
 #                disk are removed straight away
@@ -2969,7 +2974,13 @@ if [ ! -d /var/log/journal ]; then
     mkdir -p /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create /var/log/journal directory" "ERROR"
 fi
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
-write_systemd_dropin journald.conf Journal "Storage=persistent" || log "Failed to make the boot journal persistent" "ERROR"
+# SystemMaxUse is what actually caps the journal. The vacuum further down only trims what is on disk
+# at that moment, so on its own it left the journal free to grow back to journald's own default.
+if [ -n "${JOURNAL_MAX_SIZE}" ]; then
+    write_systemd_dropin journald.conf Journal "Storage=persistent" "SystemMaxUse=${JOURNAL_MAX_SIZE}" || log "Failed to configure the boot journal" "ERROR"
+else
+    write_systemd_dropin journald.conf Journal "Storage=persistent" || log "Failed to make the boot journal persistent" "ERROR"
+fi
 
 # Since kilall is not present on debian, we'll use plain old kill
 # killall -USR1 systemd-journald
@@ -2977,8 +2988,14 @@ write_systemd_dropin journald.conf Journal "Storage=persistent" || log "Failed t
 # shellcheck disable=SC2009
 kill -USR1 "$(ps aux | grep '[s]ystemd-journald' | awk '{print $2}')"
 
-# Configure max journal size
-journalctl --vacuum-size=2G 2>> "${LOG_FILE}" || log "Failed to set journald vaccumsize" "ERROR"
+# Reclaim the space now. SystemMaxUse above is what keeps the journal capped from here on, this only
+# trims what is already on disk. --vacuum-size takes a size and not a percentage, so a percentage
+# configured for SystemMaxUse is left to journald to apply on its next rotation.
+case "${JOURNAL_MAX_SIZE}" in
+    '')   log "No journal size limit configured, leaving journald's default in place" ;;
+    *%)   log "Journal limited to ${JOURNAL_MAX_SIZE}, which journald applies on rotation" ;;
+    *)    journalctl --vacuum-size="${JOURNAL_MAX_SIZE}" 2>> "${LOG_FILE}" || log "Failed to vacuum the journal to ${JOURNAL_MAX_SIZE}" "ERROR" ;;
+esac
 
 if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
     log "Setting up automatic updates"

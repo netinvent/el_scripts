@@ -257,41 +257,59 @@ get_kernel_arguments() {
 }
 
 # This is a duplicate from the Python script, but since we don't inherit pre settings, we need to redeclare it
-# Physical machine can return
-# VME (Virtual mode extension)
-# Enhanced Virtualization
-
+# lsmod checks presdence for virtio drivers
+# dmidecode checks for special strings in the SMBIOS tables, which every hypervisor in the pattern below signs itself with
+# Phyisical CPU info can read "VME (Virtual mode extension)" and "Enhanced Virtualization" flags, so that is not used
 is_virtual() {
-    lsmod | grep virtio > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    local dmi_types="0,1,2"
+    local hypervisor_pattern="kvm|qemu|vmware|hyper-v|virtualbox|innotek|Manufacturer: Red Hat"
+    local dmi_output
+
+    if lsmod 2>> "${LOG_FILE}" | awk '{print $1}' | grep -qE '(^|_)virtio'; then
         IS_VIRTUAL=true
         log "Detected this machine as virtual using virtio drivers"
-    else
+        return 0
+    fi
 
-        # Hence we need to detect specific products
-        if ! type -p dmidecode > /dev/null 2>&1; then
-            log "dmidecode not found, trying to install it"
-            if [ "${FLAVOR}" = "rhel" ]; then
-                dnf install -y dmidecode
-            else
-                apt install -y dmidecode
-            fi
-        fi
-        if ! type -p dmidecode > /dev/null 2>&1; then
-            log "Cannot find dmidecode, let's assume this is a physical machine" "ERROR"
-            IS_VIRTUAL=false
+    # Hence we need to detect specific products
+    if ! type -p dmidecode > /dev/null 2>&1; then
+        log "dmidecode not found, trying to install it"
+        if [ "${FLAVOR}" = "rhel" ]; then
+            dnf install -y dmidecode 2>> "${LOG_FILE}" || log "Failed to install dmidecode" "ERROR"
         else
-            # Special diag for kvm machines
-            dmidecode | grep -i "kvm\|qemu\|vmware\|hyper-v\|virtualbox\|innotek\|Manufacturer: Red Hat\|${VIRT_BRAND_NAME}" > /dev/null 2>&1
-            if [ $? -eq 0 ]; then
-                IS_VIRTUAL=true
-                log "Detected this machine as virtual using hypervisor search"
-            else
-                IS_VIRTUAL=false
-                log "Detected this machine as physical"
-            fi
+            apt install -y dmidecode 2>> "${LOG_FILE}" || log "Failed to install dmidecode" "ERROR"
         fi
     fi
+    if ! type -p dmidecode > /dev/null 2>&1; then
+        log "Cannot find dmidecode, let's assume this is a physical machine" "ERROR"
+        IS_VIRTUAL=false
+        return 0
+    fi
+
+    dmi_output=$(dmidecode -t "${dmi_types}" 2>> "${LOG_FILE}")
+    if [ -z "${dmi_output}" ]; then
+        # An empty read is not evidence of physical hardware, so say so rather than deciding quietly
+        log "dmidecode returned nothing for DMI types ${dmi_types}, assuming this is a physical machine" "ERROR"
+        IS_VIRTUAL=false
+        return 0
+    fi
+
+    # Special diag for kvm machines
+    if printf '%s\n' "${dmi_output}" | grep -qiE "${hypervisor_pattern}"; then
+        IS_VIRTUAL=true
+        log "Detected this machine as virtual using hypervisor search"
+        return 0
+    fi
+
+    if [ -n "${VIRT_BRAND_NAME}" ] && printf '%s\n' "${dmi_output}" | grep -qiF "${VIRT_BRAND_NAME}"; then
+        IS_VIRTUAL=true
+        log "Detected this machine as virtual using brand name ${VIRT_BRAND_NAME}"
+        return 0
+    fi
+
+    IS_VIRTUAL=false
+    log "Detected this machine as physical"
+    return 0
 }
 
 get_el_version() {

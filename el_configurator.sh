@@ -896,6 +896,48 @@ EOF
     return 0
 }
 
+disable_apparmor_runc_profile() {
+    # Disables the AppArmor runc profile, which otherwise stops docker and podman writing to
+    # /dev/stdout through a bind mount. Not ideal from a security point of view, which is why it
+    # sits behind DISABLE_APPARMOR_RUNC_PROFILE.
+    #
+    # The link is made with -f so that a second run replaces it instead of failing with
+    # "File exists". That failure used to log an ERROR, which flipped POST_INSTALL_SCRIPT_GOOD,
+    # printed the FAILURE banner and published el_configurator_state 1 on a machine where the
+    # profile was already correctly disabled. The README documents re-running this script on an
+    # existing system, so that was the common path rather than the edge case.
+    #
+    # Optional argument is the apparmor.d directory, defaults to /etc/apparmor.d (used by tests)
+    # Returns 0 when the profile is disabled, 1 otherwise
+    local apparmor_dir="${1:-/etc/apparmor.d}"
+    local profile="${apparmor_dir}/runc"
+    local disable_dir="${apparmor_dir}/disable"
+
+    if [ ! -f "${profile}" ]; then
+        # Quiet on RHEL, where AppArmor is not installed at all
+        [ -d "${apparmor_dir}" ] && log "No AppArmor runc profile at ${profile}, nothing to disable"
+        return 0
+    fi
+
+    log "Disabling AppArmor runc profile which may cause issues with containers"
+    if [ ! -d "${disable_dir}" ] && ! mkdir -p "${disable_dir}" 2>> "${LOG_FILE}"; then
+        log "Cannot create ${disable_dir}" "ERROR"
+        return 1
+    fi
+
+    ln -sf "${profile}" "${disable_dir}/" 2>> "${LOG_FILE}"
+    # Checked by looking at the result rather than at ln's exit code, so that a link which was
+    # already in place reads as success
+    if [ ! -L "${disable_dir}/runc" ]; then
+        log "Cannot disable the AppArmor runc profile" "ERROR"
+        return 1
+    fi
+
+    # The link only takes effect once apparmor reloads its profiles
+    systemctl restart apparmor 2>> "${LOG_FILE}" || log "Cannot restart AppArmor after disabling the runc profile" "ERROR"
+    return 0
+}
+
 write_systemd_dropin() {
     # Writes a systemd configuration drop-in under /etc, which overrides the main configuration file
     # wherever the distribution happens to keep it.
@@ -4083,11 +4125,7 @@ if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then
 fi
 
 if [ "${DISABLE_APPARMOR_RUNC_PROFILE}" == true ]; then
-    if [ -f /etc/apparmor.d/runc ]; then
-        log "Disabling AppArmor runc profile which may cause issues with containers"
-        ln -s /etc/apparmor.d/runc /etc/apparmor.d/disable/ 2>> "${LOG_FILE}" || log "Failed to disable AppArmor runc profile" "ERROR"
-        systemctl restart apparmor 2>> "${LOG_FILE}" || log "Failed to restart AppArmor after disabling runc profile" "ERROR"
-    fi
+    disable_apparmor_runc_profile
 fi
 
 # Setting up watchdog in systemd

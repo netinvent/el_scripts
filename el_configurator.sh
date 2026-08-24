@@ -3153,11 +3153,10 @@ else
     write_systemd_dropin journald.conf Journal "Storage=persistent" || log "Failed to make the boot journal persistent" "ERROR"
 fi
 
-# Since kilall is not present on debian, we'll use plain old kill
-# killall -USR1 systemd-journald
-# We don't use pgrep since it's not installed everywhere
-# shellcheck disable=SC2009
-kill -USR1 "$(ps aux | grep '[s]ystemd-journald' | awk '{print $2}')"
+# Flush the runtime journal into the persistent one now that /var/log/journal exists.
+# systemd-journald.service(8) documents "journalctl --flush (or sending SIGUSR1 to journald)" for
+# exactly this, and journalctl is already relied on for the vacuum below, so this needs nothing new.
+journalctl --flush 2>> "${LOG_FILE}" || log "Could not flush the journal now, it will be flushed on next boot" "NOTICE"
 
 # Reclaim the space now. SystemMaxUse above is what keeps the journal capped from here on, this only
 # trims what is already on disk. --vacuum-size takes a size and not a percentage, so a percentage

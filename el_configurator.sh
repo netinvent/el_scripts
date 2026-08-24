@@ -4187,8 +4187,18 @@ fi
 if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ] || [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
     if sshd_begin_edit; then
         if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
-            log "Adding ClientAlive settings to sshd"
+            # These three are one policy and belong under one flag. TCPKeepAlive no switches off the
+            # TCP level probes precisely because ClientAlive replaces them over the encrypted
+            # channel, so setting only the first leaves a machine with no liveness detection at all
+            # and dead sessions that never time out. They used to live under different flags, which
+            # made exactly that reachable with CONFIGURE_SSHD_CLIENT_ALIVE=true and the CIS flag off.
+            # This also covers CIS 5.2.20, so turning this flag off gives that control up knowingly.
+            log "Adding ClientAlive settings to sshd, which also covers CIS 5.2.20"
             set_conf_value "${SSHD_EDIT_FILE}" "TCPKeepAlive" "no" " "
+            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveInterval" "120" " "
+            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveCountMax" "3" " "
+        elif [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+            log "CONFIGURE_SSHD_CLIENT_ALIVE is off, so CIS 5.2.20 is not applied" "NOTICE"
         fi
         if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
             # The following CIS parameters aren't applied automagically by scap profiles
@@ -4210,10 +4220,8 @@ if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ] || [ "${CONFIGURE_CIS_SSHD_SETT
             # CIS 5.2.19
             log "Applying CIS 5.2.19"
             set_conf_value "${SSHD_EDIT_FILE}" "LoginGraceTime" "60" " "
-            # CIS 5.2.20
-            log "Applying CIS 5.2.20"
-            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveInterval" "120" " "
-            set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveCountMax" "3" " "
+            # CIS 5.2.20 is applied by CONFIGURE_SSHD_CLIENT_ALIVE above, together with the
+            # TCPKeepAlive setting it only makes sense alongside
         fi
         sshd_commit_edit
     fi

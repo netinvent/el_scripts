@@ -164,6 +164,14 @@ JOURNAL_MAX_SIZE="2G"
 #   Debian 12    Value is wrtitten but old apt doesn't honour it
 KERNELS_TO_KEEP=2
 
+# End of run cleanup, see cleanup_system() for exactly what each mode removes
+#   live     A machine already in service, which is what re running this script means. Caches and
+#            short lived files go, logs and package manager history stay
+#   master   A VM being prepared for cloning. Also removes logs, package manager transaction
+#            history and network state, none of which can be recovered afterwards
+CLEANUP_MODE=live
+#CLEANUP_MODE=master
+
 LOG_FILE=/root/.el-configurator.log
 
 log() {
@@ -1335,6 +1343,118 @@ uniq_filelines() {
     if [ -f "${filename}" ]; then
         sort -u "${filename}" -o "${filename}" || log "Cannot make lines in file [${filename}] unique." "ERROR"
     fi
+}
+
+# End of run cleanup
+#
+# The same list of paths is right for a VM about to be cloned and destructive for one that is
+# already in service, so the mode decides how far this goes.
+#
+#   live     Caches and short lived files only. Everything that is evidence or a recovery path
+#            stays: logs, package manager transaction history, NetworkManager leases, the DNSSEC
+#            trust anchor. Re running this script on a machine in production lands here, and the
+#            journal is already bounded by JOURNAL_MAX_SIZE so older logs need no mode of their own
+#   master   Adds what a golden image has to forget, all of it a one way loss: logs, package
+#            manager history, network state and the DNSSEC anchor
+#
+# Machine identity is out of scope on purpose. Clones keep the master's /etc/machine-id, systemd
+# random seed and SSH host keys, so whatever builds the template still has to deal with those.
+#
+# An unknown mode cleans nothing rather than guessing, and the default is live, so a call that
+# loses its argument cannot take a transaction history with it.
+cleanup_system() {
+    local mode="${1:-live}"
+    local _ks
+
+    if [ "${mode}" != live ] && [ "${mode}" != master ]; then
+        log "cleanup_system called with unknown mode [${mode}], nothing was cleaned" "ERROR"
+        return 1
+    fi
+
+    log "Running ${mode} cleanup"
+
+    # Both modes. The kickstart files carry the root password hash, so they never stay on disk
+    for _ks in /root/anaconda-ks.cfg /root/original-ks.cfg; do
+        if [ -f "${_ks}" ]; then
+            shred -uz "${_ks}" 2>> "${LOG_FILE}" || log "Failed to shred ${_ks}" "ERROR"
+        fi
+    done
+
+    # Both modes. /etc/*- is deliberately not in this list: it matches /etc/passwd-, /etc/shadow-,
+    # /etc/group-, /etc/gshadow-, /etc/subuid- and /etc/subgid-, which are the backup copies
+    # shadow-utils maintains and the only way back if one of those databases is lost
+    rm -rf /etc/*.bak /etc/*~ /etc/sysconfig/*~ 2>> "${LOG_FILE}"
+
+    # Both modes. The package manager's own clean command empties the cache and leaves the
+    # transaction history alone, which is exactly the distinction that matters on a live machine
+    if [ "${FLAVOR}" = "rhel" ]; then
+        dnf clean all >> "${LOG_FILE}" 2>&1 || log "Failed to clean the dnf cache" "NOTICE"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        apt-get clean >> "${LOG_FILE}" 2>&1 || log "Failed to clean the apt cache" "NOTICE"
+    fi
+
+    if [ "${mode}" = master ]; then
+        rm -rf /tmp/* /tmp/.[a-zA-Z]* /var/tmp/* 2>> "${LOG_FILE}"
+    elif command -v systemd-tmpfiles > /dev/null 2>&1; then
+        # A plain rm would take out the tmpfiles managed socket directories, /tmp/.X11-unix and
+        # /tmp/.ICE-unix both match that dot glob, along with the /var/tmp/systemd-private-* trees
+        # backing every PrivateTmp=yes service. systemd-tmpfiles honours the age policy shipped in
+        # tmpfiles.d instead, 10 days for /tmp and 30 for /var/tmp on a stock system, and leaves
+        # anything still in use alone
+        systemd-tmpfiles --clean >> "${LOG_FILE}" 2>&1 || log "Failed to clean temporary files" "NOTICE"
+    fi
+
+    if [ "${mode}" != master ]; then
+        sync
+        log "Cleanup done, logs and package manager history kept"
+        return 0
+    fi
+
+    # Master only from here down, and none of it can be undone
+
+    rm -rf /var/log/*debug /var/log/dmesg* 2>> "${LOG_FILE}"
+    #rm -rf /var/log/anaconda
+    if command -v journalctl > /dev/null 2>&1; then
+        journalctl --rotate >> "${LOG_FILE}" 2>&1 && journalctl --vacuum-time=1s >> "${LOG_FILE}" 2>&1
+    fi
+
+    if [ "${FLAVOR}" = "rhel" ]; then
+        # /var/lib/dnf holds history.sqlite, so this is what dnf history undo and rollback lose.
+        # The cache directories below are what dnf clean all above does not reach on older releases
+        rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/* 2>> "${LOG_FILE}"
+        rm -rf /var/cache/yum/* /var/log/rhsm/* 2>> "${LOG_FILE}"
+        # The rollback point for authselect apply-changes
+        rm -rf /var/lib/authselect/backups/* 2>> "${LOG_FILE}"
+    elif [ "${FLAVOR}" = "debian" ]; then
+        # apt keeps its transaction record in /var/log/apt, and /var/backups holds the rotated
+        # copies of the account databases and of the dpkg status file
+        rm -rf /var/lib/apt/lists/* /var/log/apt/* /var/backups/* 2>> "${LOG_FILE}"
+    fi
+
+    # Network state a clone must not inherit: DHCP leases and NetworkManager's stable id material
+    rm -rf /var/lib/NetworkManager/* /var/lib/dhcp/* /var/lib/dhclient/* 2>> "${LOG_FILE}"
+
+    # unbound-anchor re bootstraps the DNSSEC root anchor on first use. One stale anchor cloned
+    # across a whole fleet ages worse than no anchor at all
+    rm -rf /var/lib/unbound/*.key 2>> "${LOG_FILE}"
+
+    # cloud-init owns its state and knows how to reset it. The glob this replaces was
+    # /var/lib/cloud/a*, which matches nothing at all: the tree is data, handlers, instance,
+    # instances, scripts, seed and sem
+    if command -v cloud-init > /dev/null 2>&1; then
+        cloud-init clean --logs >> "${LOG_FILE}" 2>&1 || log "Failed to reset cloud-init state" "NOTICE"
+    else
+        rm -rf /var/lib/cloud/* /var/log/cloud-init*.log 2>> "${LOG_FILE}"
+    fi
+
+    sync
+    # Worth doing right before an image is captured and nowhere else. On a live machine this evicts
+    # the whole page cache along with every dentry and inode, and anything doing IO stalls while it
+    # all gets read back from disk
+    echo 3 > /proc/sys/vm/drop_caches 2>> "${LOG_FILE}" || log "Failed to drop caches" "NOTICE"
+
+    log "Master VM cleanup done, logs and package manager history removed"
+    return 0
 }
 
 ## Script entry point
@@ -4340,25 +4460,8 @@ echo "${MOTD_MSG}" >> /etc/motd 2>> "${LOG_FILE}" || log "Failed to add cow to /
 sed -i "s/___MOTD_STATUS_DO_NOT_DELETE___/${MOTD_STATUS}/g" /etc/motd 2>> "${LOG_FILE}" || log "Failed to set status in /etc/motd" "ERROR"
 
 
-# Cleanup kickstart file replaced with inst.nosave=all_ks
-[ -f /root/anaconda-ks.cfg ] && /bin/shred -uz /root/anaconda-ks.cfg
-[ -f /root/original-ks.cfg ] && /bin/shred -uz /root/original-ks.cfg
-
-# Clean up log files, caches and temp
-# Clear caches, files, and logs
-/bin/rm -rf /tmp/* /tmp/.[a-zA-Z]* /var/tmp/*
-/bin/rm -rf /etc/*- /etc/*.bak /etc/*~ /etc/sysconfig/*~
-/bin/rm -rf /var/log/*debug /var/log/dmesg*
-/bin/rm -rf /var/lib/cloud/a* /var/log/cloud-init*.log
-/bin/rm -rf /var/lib/authselect/backups/*
-if [ "${FLAVOR}" = "rhel" ]; then
-    /bin/rm -rf /var/cache/dnf/* /var/cache/yum/* /var/log/rhsm/*
-    /bin/rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/*
-    /bin/rm -rf /var/lib/NetworkManager/* /var/lib/unbound/*.key
-fi
-#/bin/rm -rf /var/log/anaconda
-
-# Make sure we write everything to disk
-sync; echo 3 > /proc/sys/vm/drop_caches
+# Cleanup. The kickstart file itself is already handled by inst.nosave=all_ks, this is belt and
+# braces for the case where it is not. cleanup_system also syncs everything to disk on the way out
+cleanup_system "${CLEANUP_MODE}"
 
 log "Finished at $(date) with state ${POST_INSTALL_SCRIPT_GOOD}"

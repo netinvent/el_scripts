@@ -69,6 +69,7 @@ EOF
 )
 
 # By default, ANSSI profiles disables sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
+# Does only allow sudo binary, you still need a user allowed to sudo via wheel/sudo groups
 ALLOW_SUDO=false
 
 # Setup SELinux on Debian
@@ -4140,12 +4141,18 @@ if [ "${ALLOW_SUDO}" = true ] && [ "${SCAP_PROFILE}" != false ]; then
     # Patch sudoers file since noexec is set by default, which prevents sudo
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
-        # chmod 4111 /usr/bin/sudo is not needed on RHEL normally
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
     fi
-    log "chmod /usr/bin/sudo to setuid root and disabling noexec in sudoers"
-    chmod 4755 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
+    # The scap profile has just locked sudo down: file_permissions_sudo sets /usr/bin/sudo to 4110
+    # and sudo_dedicated_group gives it to group root, so nothing but root can execute it. Undoing
+    # that on purpose is what ALLOW_SUDO is for, which is why a fixed mode belongs here. A chmod u+s
+    # would leave the profile's 4110 in place and quietly achieve nothing.
+    # 4111 is the mode RHEL 8 to 10 ship: executable by everyone, readable by nobody. The 4755 this
+    # replaces also granted read to group and other, which nothing here needs, and left a permanent
+    # "rpm -V sudo" mismatch on top of it.
+    log "Restoring execute permission on /usr/bin/sudo, and disabling noexec in sudoers"
+    chmod 4111 /usr/bin/sudo 2>> "${LOG_FILE}" || log "Failed to chmod /usr/bin/sudo" "ERROR"
     if sudoers_begin_edit; then
         sed -i 's/^Defaults noexec/#Defaults noexec/g' "${SUDOERS_EDIT_FILE}" 2>> "${LOG_FILE}" || log "Failed to sed the sudoers copy" "ERROR"
         sudoers_commit_edit

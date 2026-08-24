@@ -292,13 +292,10 @@ get_el_version() {
             FLAVOR=rhel
 	    if grep -e 'PLATFORM_ID=".*el10' /etc/os-release > /dev/null; then
                 RELEASE=10
-		        SYSTEMD_PREFIX=/usr/lib/systemd
             elif grep -e 'PLATFORM_ID=".*el9' /etc/os-release > /dev/null; then
                 RELEASE=9
-		        SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'PLATFORM_ID=".*el8' /etc/os-release > /dev/null; then
                 RELEASE=8
-		        SYSTEMD_PREFIX=/etc/systemd
             else
                 log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
@@ -311,13 +308,10 @@ get_el_version() {
             FLAVOR=debian
             if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
                 RELEASE=11
-		        SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
                 RELEASE=12
-		        SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
                 RELEASE=13
-		        SYSTEMD_PREFIX=/etc/systemd
             fi
             if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
@@ -328,10 +322,8 @@ get_el_version() {
             FLAVOR=debian
             if grep -e 'VERSION_ID="20' /etc/os-release > /dev/null; then
                 RELEASE=20
-                SYSTEMD_PREFIX=/etc/systemd
             elif grep -e 'VERSION_ID="22' /etc/os-release > /dev/null; then
                 RELEASE=22
-                SYSTEMD_PREFIX=/etc/systemd
             fi
             if [ "${RELEASE}" -ge 20 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}, limited compatibility"
@@ -901,6 +893,56 @@ EOF
     # Starting and reloading do not work in the install environment, so these are not errors there
     systemctl daemon-reload 2>> "${LOG_FILE}" || log "Cannot reload systemd, the node_exporter limits apply on next boot"
     systemctl restart node_exporter 2>> "${LOG_FILE}" || log "Cannot restart node_exporter, the new limits apply on next boot"
+    return 0
+}
+
+write_systemd_dropin() {
+    # Writes a systemd configuration drop-in under /etc, which overrides the main configuration file
+    # wherever the distribution happens to keep it.
+    #
+    # This replaces editing journald.conf and system.conf in place. On EL10 those live under
+    # /usr/lib/systemd and are owned by the systemd package, so editing them there shows up in
+    # rpm -Va for good and is reverted by the next systemd update, quietly taking the hardening with
+    # it. Drop-ins in /etc are the documented place for a local administrator to override vendor
+    # configuration, and they take precedence over the main file. They have been supported since
+    # long before any release this script targets, EL8's systemd 239 included.
+    #
+    # Arguments: the configuration name (journald.conf, system.conf), the section, then one or more
+    #            settings written verbatim
+    # Returns 0 when every setting is present in the drop-in, 1 otherwise
+    local conf_name="${1}"
+    local section="${2}"
+    shift 2
+    local dropin_dir="/etc/systemd/${conf_name}.d"
+    local dropin="${dropin_dir}/99-el_configurator.conf"
+    local setting
+
+    if [ $# -eq 0 ]; then
+        log "No setting given for ${dropin}" "ERROR"
+        return 1
+    fi
+
+    if [ ! -d "${dropin_dir}" ] && ! mkdir -p "${dropin_dir}" 2>> "${LOG_FILE}"; then
+        log "Cannot create ${dropin_dir}" "ERROR"
+        return 1
+    fi
+
+    {
+        printf '# Written by el_configurator, overrides %s\n' "${conf_name}"
+        printf '[%s]\n' "${section}"
+        for setting in "$@"; do
+            printf '%s\n' "${setting}"
+        done
+    } > "${dropin}" 2>> "${LOG_FILE}"
+
+    # Read back, so a read only or full filesystem is reported rather than passing as configured
+    for setting in "$@"; do
+        if ! grep -qFx -e "${setting}" -- "${dropin}" 2>/dev/null; then
+            log "Cannot write [${setting}] to ${dropin}" "ERROR"
+            return 1
+        fi
+    done
+    log "Wrote ${dropin}"
     return 0
 }
 
@@ -2885,7 +2927,7 @@ if [ ! -d /var/log/journal ]; then
     mkdir -p /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create /var/log/journal directory" "ERROR"
 fi
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
-sed -i 's/.*Storage=.*/Storage=persistent/g' "${SYSTEMD_PREFIX}/journald.conf" 2>> "${LOG_FILE}" || log "Failed to sed ${SYSTEMD_PREFIX}/journald.conf" "ERROR"
+write_systemd_dropin journald.conf Journal "Storage=persistent" || log "Failed to make the boot journal persistent" "ERROR"
 
 # Since kilall is not present on debian, we'll use plain old kill
 # killall -USR1 systemd-journald
@@ -4051,7 +4093,7 @@ fi
 # Setting up watchdog in systemd
 if [ "${CONFIGURE_WATCHDOG}" != false ]; then
     log "Setting up systemd watchdog"
-    sed -i -e 's,^#RuntimeWatchdogSec=.*,RuntimeWatchdogSec=60s,' "${SYSTEMD_PREFIX}/system.conf" 2>> "${LOG_FILE}" || log "Failed to sed ${SYSTEMD_PREFIX}/system.conf" "ERROR"
+    write_systemd_dropin system.conf Manager "RuntimeWatchdogSec=60s" || log "Failed to set the systemd watchdog" "ERROR"
 fi
 
 if [ "${CONFIGURE_NETWORK_SCHEDULING}" != false ]; then

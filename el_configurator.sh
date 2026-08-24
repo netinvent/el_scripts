@@ -1355,13 +1355,6 @@ configure_ufw() {
     return 0
 }
 
-uniq_filelines() {
-    filename="${1:-false}"
-
-    if [ -f "${filename}" ]; then
-        sort -u "${filename}" -o "${filename}" || log "Cannot make lines in file [${filename}] unique." "ERROR"
-    fi
-}
 
 # End of run cleanup
 #
@@ -1472,6 +1465,53 @@ cleanup_system() {
     echo 3 > /proc/sys/vm/drop_caches 2>> "${LOG_FILE}" || log "Failed to drop caches" "NOTICE"
 
     log "Master VM cleanup done, logs and package manager history removed"
+    return 0
+}
+
+# Writes our DEVICESCAN entry into smartd's configuration, once
+#
+# smartd.conf is order dependent in two ways, both quoting smartd.conf(5): a DEFAULT entry applies
+# its directives "as defaults for the next device entries", and DEVICESCAN makes smartd "ignore any
+# remaining lines in the configuration file". So this file may be deduplicated but never reordered.
+#
+# The previous version appended unconditionally and then ran the whole file through sort -u to keep
+# it from growing on every run. That deduplicated, and it also sorted. An operator's DEFAULT line
+# ended up below the /dev entries it was written above, where its directives apply to nothing at
+# all, and every comment was detached from the line it documented. Doing nothing when the entry is
+# already there removes the need to deduplicate, and so the need to sort.
+#
+# Returns 0 when the entry is in place, 1 otherwise
+configure_smartd_devicescan() {
+    local conf_file="${1}"
+    local devicescan="DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)"
+
+    if [ ! -f "${conf_file}" ]; then
+        log "Cannot find smartd configuration file at ${conf_file}" "ERROR"
+        return 1
+    fi
+
+    # -F and -x together, so the entry is compared as one whole line of literal text. The directive
+    # contains (, |, [ and ], every one of which would otherwise be read as expression syntax
+    if grep -qFx "${devicescan}" "${conf_file}"; then
+        log "smartd already carries our DEVICESCAN entry, leaving ${conf_file} untouched"
+        return 0
+    fi
+
+    # Deactivate any existing DEVICESCAN entries since only the first one gets executed
+    if ! sed -i 's/^DEVICESCAN/# DEVICESCAN/g' "${conf_file}" >> "${LOG_FILE}" 2>&1; then
+        log "Failed to deactivate existing DEVICESCAN entries in ${conf_file}" "ERROR"
+        return 1
+    fi
+    # Add our basic devicescan entry, at the end, where DEVICESCAN belongs: it makes smartd stop
+    # reading, so anything the operator wrote below it would go unread
+    if ! echo "${devicescan}" >> "${conf_file}" 2>> "${LOG_FILE}"; then
+        log "Failed to add DEVICESCAN to ${conf_file}" "ERROR"
+        return 1
+    fi
+    if ! grep -qFx "${devicescan}" "${conf_file}"; then
+        log "DEVICESCAN entry did not land in ${conf_file}" "ERROR"
+        return 1
+    fi
     return 0
 }
 
@@ -1654,14 +1694,7 @@ if [ ${IS_VIRTUAL} != true ]; then
         fi
     fi
 
-    if [ ! -f "${SMARTD_CONF_FILE}" ]; then
-        log "Cannot find smartd configuration file at ${SMARTD_CONF_FILE}" "ERROR"
-    fi
-    # Deactivate any existing DEVICESCAN entries since only the first one gets executed
-    sed -i 's/^DEVICESCAN/# DEVICESCAN/g' "${SMARTD_CONF_FILE}" >> "${LOG_FILE}" 2>&1
-    # Add our basic devicescan entry
-    echo "DEVICESCAN -H -l error -f -C 197+ -U 198+ -t -l selftest -I 194 -n sleep,7,q -s (S/../.././10|L/../../[5]/13)" >> "${SMARTD_CONF_FILE}" 2>> "${LOG_FILE}" || log "Failed to add DEVICESCAN to smartd.conf" "ERROR"
-    uniq_filelines "${SMARTD_CONF_FILE}"
+    configure_smartd_devicescan "${SMARTD_CONF_FILE}"
     systemctl enable ${SMARTD_SYSTEMD_SERVICE} 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
     if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ] && [ "${IS_VIRTUAL}" != true ]; then

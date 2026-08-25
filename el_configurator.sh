@@ -2855,7 +2855,7 @@ EOF
         if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
             mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
         fi
-        echo -e "MAILTO=""\n*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+        echo -e "MAILTO=\"\"\n*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
     fi
 
     # TODO Test this for Debian

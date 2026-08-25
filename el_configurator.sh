@@ -373,51 +373,46 @@ get_el_version() {
 # We need a dns hostname in order to validate that we got internet before using internet related functions
 # Also, we need to make sure 
 check_internet() {
-    fqdn_host="one.one.one.one kernel.org github.com"
-    ip_hosts="2606:4700:4700::1001 8.8.8.8 9.9.9.9"
-    for host in ${fqdn_host[@]}; do
+    local fqdn_hosts=(one.one.one.one kernel.org github.com)
+    local ip_hosts=(2606:4700:4700::1001 8.8.8.8 9.9.9.9)
+    local host ip_result route_result resolv
+
+    for host in "${fqdn_hosts[@]}"; do
         if type curl > /dev/null 2>&1; then
-            curl -s --connect-timeout 5 -Lk "http://${host}" > /dev/null 2>&1
-            if [ $? -eq 0 ]; then
-                log "FQDN curl HTTP request to ${host} works."
+            if curl -s --connect-timeout 5 "https://${host}" > /dev/null 2>&1; then
+                log "FQDN curl HTTPS request to ${host} works."
                 return 0
-            else
-                log "FQDN curl HTTP request to ${host} failed."
             fi
+            log "FQDN curl HTTPS request to ${host} failed."
         elif type wget > /dev/null 2>&1; then
-            wget -q --timeout=5 -O /dev/null "http://${host}" > /dev/null 2>&1
-            if [ $? -eq 0 ]; then
-                log "FQDN wget HTTP request to ${host} works."
+            if wget -q --timeout=5 -O /dev/null "https://${host}" > /dev/null 2>&1; then
+                log "FQDN wget HTTPS request to ${host} works."
                 return 0
-            else
-                log "FQDN wget HTTP request to ${host} failed."
             fi
+            log "FQDN wget HTTPS request to ${host} failed."
         else
             log "No curl nor wget available to test internet connectivity to ${host}" "INFO"
         fi
-        ping -4 -c2 "${host}" > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
+        if ping -4 -c2 "${host}" > /dev/null 2>&1; then
             log "FQDN IPv4 echo request to ${host} works."
             return 0
-        else
-            log "FQDN IPv4 echo request to ${host} failed."
         fi
-        ping -6 -c2 "${host}" > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
+        log "FQDN IPv4 echo request to ${host} failed."
+        if ping -6 -c2 "${host}" > /dev/null 2>&1; then
             log "FQDN IPv6 echo request to ${host} works."
             return 0
-        else
-            log "FQDN IPv6 echo request to ${host} failed."
         fi
+        log "FQDN IPv6 echo request to ${host} failed."
     done
+
     log "Looks like we cannot access internet via hostnames. Let's try IPs"
-    for host in ${ip_hosts[@]}; do
-        ping -c2 "${host}" > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
+    for host in "${ip_hosts[@]}"; do
+        if ping -c2 "${host}" > /dev/null 2>&1; then
             log "IP check to ${host} works, but dns resolution doesn't seem to."
             return 1
         fi
     done
+
     ip_result=$(ip a)
     route_result=$(ip route)
     resolv=$(cat /etc/resolv.conf)
@@ -1244,7 +1239,7 @@ configure_firewalld() {
     fi
 
     IFS=':' read -r -a firewall_whitelist_ip_array <<< "${FIREWALL_WHITELIST_IP_LIST}"
-    if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+    if is_enabled FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS; then
         firewalld_zone=trusted
         log "Adding whitelisted IPs to firewalld in trusted zone"
     else
@@ -1265,7 +1260,7 @@ configure_firewalld() {
         fi
     done
 
-    if [ "${firewalld_zone}" = dmz ] && [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+    if [ "${firewalld_zone}" = dmz ] && is_enabled NODE_EXPORTER_USE_IP_WHITELISTS; then
         log "Adding node exporter whitelisted IPs to firewalld dmz zone"
         firewall-offline-cmd --zone=dmz --add-port=9100/tcp 2>> "${LOG_FILE}" || log "Failed to add node exporter to firewalld dmz zone" "ERROR"
     fi
@@ -1306,7 +1301,7 @@ configure_ufw() {
 
     if [ "${FIREWALL_WHITELIST_IP_LIST}" != "" ]; then
         IFS=':' read -r -a firewall_whitelist_ip_array <<< "${FIREWALL_WHITELIST_IP_LIST}"
-        if [ "${FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS}" == true ]; then
+        if is_enabled FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS; then
             log "Adding whitelisted IPs to ufw"
             for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
                 if /sbin/ufw allow from "${whitelist_ip}" 2>> "${LOG_FILE}"; then
@@ -1324,7 +1319,7 @@ configure_ufw() {
                     log "Failed to add ${whitelist_ip} to ufw ssh whitelist" "ERROR"
                 fi
             done
-            if [ "${NODE_EXPORTER_USE_IP_WHITELISTS}" != false ]; then
+            if is_enabled NODE_EXPORTER_USE_IP_WHITELISTS; then
                 log "Adding node exporter whitelisted IPs to ufw"
                 # Metrics do not make the machine reachable, so these do not count
                 for whitelist_ip in "${firewall_whitelist_ip_array[@]}"; do
@@ -1515,6 +1510,95 @@ configure_smartd_devicescan() {
     return 0
 }
 
+# Every option from the configuration block at the top that holds a true or false value
+#
+# Kept as one list so that validate_boolean_options can check the lot before anything is changed.
+# A test asserts this matches what the configuration block actually declares, so the two cannot
+# drift apart. POST_INSTALL_SCRIPT_GOOD is deliberately absent: the script sets it itself and no
+# operator ever writes it.
+BOOLEAN_OPTIONS=(
+    ALLOW_SUDO
+    ALLOW_UNPROTECTED_FS_SYMLINKS
+    CONFIGURE_AUTOMATIC_UPDATES
+    CONFIGURE_CIS_SSHD_SETTINGS
+    CONFIGURE_FIREWALL
+    CONFIGURE_NETWORK_SCHEDULING
+    CONFIGURE_NODE_EXPORTER
+    CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS
+    CONFIGURE_SERIAL_TERMINAL
+    CONFIGURE_SSHD_CLIENT_ALIVE
+    CONFIGURE_TERMINAL_RESIZER
+    CONFIGURE_TUNED
+    CONFIGURE_WATCHDOG
+    DISABLE_APPARMOR_RUNC_PROFILE
+    FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS
+    KEEP_ARP_FILTER_DISABLED
+    NODE_EXPORTER_SKIP_FIREWALL
+    NODE_EXPORTER_USE_IP_WHITELISTS
+    REPLACE_EXISTING_NTP
+    SETUP_SELINUX_DEBIAN
+)
+
+# Reads one of those options
+#
+# They used to be tested three different ways: [ "${X}" != false ], [ "${X}" = true ] and
+# [ "${X}" == true ]. The three disagree about every value that is not exactly the lowercase word,
+# so one spelling meant opposite things in different parts of the same run:
+#
+#   X=yes    the != false blocks ran, the = true blocks did not. ALLOW_SUDO=yes left sudo locked
+#            down, FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=yes silently narrowed the whitelist to ssh
+#   X=False  the != false blocks ran anyway, because the comparison is against a lowercase literal.
+#            ALLOW_UNPROTECTED_FS_SYMLINKS=No therefore switched fs.protected_symlinks off, which is
+#            the opposite of what anyone writing No means
+#
+# Neither said anything at the time. Every spelling below is accepted in any case, and anything else
+# is refused by validate_boolean_options before the script touches the machine.
+#
+# Takes the option name rather than its value, so a bad value can be reported against its own name.
+# Returns 0 when the option is on, 1 when it is off
+is_enabled() {
+    local value="${!1}"
+
+    case "$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')" in
+        true|yes|y|on|1) return 0 ;;
+        *)               return 1 ;;
+    esac
+}
+
+# The literal word for an option, for handing to code that does its own comparison rather than
+# calling is_enabled, such as the vendored node_exporter installer
+boolean_value() {
+    if is_enabled "${1}"; then
+        echo true
+    else
+        echo false
+    fi
+}
+
+# Refuses to start with a value nothing can interpret
+#
+# There is no safe way to guess one, because it differs per option: the cautious reading of
+# CONFIGURE_FIREWALL is on, and of ALLOW_UNPROTECTED_FS_SYMLINKS it is off. A baseline that applies
+# half of itself is worse than one that does not start, so every unusable value is reported together
+# and the run stops. This has to happen after get_kernel_arguments, which can set these options from
+# the boot line, and before anything is changed.
+validate_boolean_options() {
+    local name value bad=""
+
+    for name in "${BOOLEAN_OPTIONS[@]}"; do
+        value="${!name}"
+        case "$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')" in
+            true|yes|y|on|1|false|no|n|off|0) ;;
+            *) bad="${bad} ${name}=[${value}]" ;;
+        esac
+    done
+
+    if [ -n "${bad}" ]; then
+        log_quit "Cannot interpret these options:${bad}. Use true or false" "ERROR"
+    fi
+    return 0
+}
+
 ## Script entry point
 POST_INSTALL_SCRIPT_GOOD=true
 
@@ -1522,6 +1606,7 @@ POST_INSTALL_SCRIPT_GOOD=true
 export PATH=$PATH:/sbin:/usr/sbin
 
 get_kernel_arguments
+validate_boolean_options
 get_el_version
 is_virtual
 
@@ -1628,7 +1713,7 @@ else
     log "No SCAP profile selected. Skipping SCAP profile setup"
 fi
 
-if [ "${SETUP_SELINUX_DEBIAN}" != false ] && [ "${FLAVOR}" = "debian" ]; then
+if is_enabled SETUP_SELINUX_DEBIAN && [ "${FLAVOR}" = "debian" ]; then
     log "Setting up SELinux on ${FLAVOR}"
     apt install -y selinux-basics selinux-policy-default auditd policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
     log "Activating SELinux"
@@ -1658,19 +1743,19 @@ if [ $? -eq 0 ]; then
         # shellcheck disable=SC2086
         dnf install -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
         enable_crb_repository
-        if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+        if is_enabled CONFIGURE_AUTOMATIC_UPDATES; then
             dnf install -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
         fi
-        if [ "${CONFIGURE_TUNED}" != false ]; then
+        if is_enabled CONFIGURE_TUNED; then
             dnf install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
         apt install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
         apt install -y htop atop nmon iftop iptraf-ng  tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
-        if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+        if is_enabled CONFIGURE_AUTOMATIC_UPDATES; then
             apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
         fi
-        if [ "${CONFIGURE_TUNED}" != false ]; then
+        if is_enabled CONFIGURE_TUNED; then
             apt install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     fi
@@ -1697,7 +1782,7 @@ if [ ${IS_VIRTUAL} != true ]; then
     configure_smartd_devicescan "${SMARTD_CONF_FILE}"
     systemctl enable ${SMARTD_SYSTEMD_SERVICE} 2>> "${LOG_FILE}" || log "Failed to start smartd" "ERROR"
 
-    if [ "${CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS}" = true ] && [ "${IS_VIRTUAL}" != true ]; then
+    if is_enabled CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS && [ "${IS_VIRTUAL}" != true ]; then
         log "Setting up python smartmontools / nvme tooling for prometheus"
         if [ "${FLAVOR}" = "rhel" ]; then
             # As of 2025-09-23, there is no python3-prometheus_client package so we have to bootstrap in from python on RHEL10
@@ -2774,7 +2859,7 @@ EOF
     fi
 
     # TODO Test this for Debian
-    if [ "${CONFIGURE_WATCHDOG}" != false ]; then
+    if is_enabled CONFIGURE_WATCHDOG; then
         log "Setting up iTCO_wdt watchdog"
         echo "iTCO_wdt" > /etc/modules-load.d/10-watchdog.conf
     fi
@@ -2793,7 +2878,7 @@ EOF
         echo "options it87 force_id=0x8620" > /etc/modprobe.d/it87.conf
     fi
 
-    if [ "${CONFIGURE_TUNED}" != false ]; then
+    if is_enabled CONFIGURE_TUNED; then
         log "Setting up tuned profiles"
 
         # RHEL 10 as well as Debian 13 use /etc/tuned/profiles whareas RHEL 8 and 9 use /etc/tuned as profile directory
@@ -3063,7 +3148,7 @@ else
     log "This is a virtual machine. We will not setup hardware tooling"
 fi
 
-if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
+if is_enabled CONFIGURE_SERIAL_TERMINAL; then
     # Configure serial console
     log "Setting up serial console"
     systemctl enable serial-getty@ttyS0.service 2>> "${LOG_FILE}" || log "Enabling serial getty failed" "ERROR"
@@ -3087,7 +3172,7 @@ if [ "${CONFIGURE_SERIAL_TERMINAL}" != false ]; then
     set_conf_value /etc/sysctl.d/99-kernel_printk.conf "kernel.printk" "4 4 1 7"
 fi
 
-if [ "${CONFIGURE_TERMINAL_RESIZER}" != false ]; then
+if is_enabled CONFIGURE_TERMINAL_RESIZER; then
     # Setup automagic terminal resize
     # singequotes on EOF prevents variable expansion
     # Tested on EL7, EL8, EL9, Debian 12 and Debian 13
@@ -3167,7 +3252,7 @@ case "${JOURNAL_MAX_SIZE}" in
     *)    journalctl --vacuum-size="${JOURNAL_MAX_SIZE}" 2>> "${LOG_FILE}" || log "Failed to vacuum the journal to ${JOURNAL_MAX_SIZE}" "ERROR" ;;
 esac
 
-if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
+if is_enabled CONFIGURE_AUTOMATIC_UPDATES; then
     log "Setting up automatic updates"
     if [ "${FLAVOR}" = "rhel" ]; then
         log "Setup DNF automatic except for updates that require reboot"
@@ -3193,7 +3278,7 @@ if [ "${CONFIGURE_AUTOMATIC_UPDATES}" != false ]; then
     fi
 fi
 
-if [ "${CONFIGURE_TUNED}" != false ]; then
+if is_enabled CONFIGURE_TUNED; then
     log "Setting up tuned"
     systemctl enable tuned 2>> "${LOG_FILE}" || log "Failed to start tuned" "ERROR"
     # tuned-adm will complain that tuned is not running, but we cannot start tuned in install environment
@@ -3207,7 +3292,7 @@ if [ "${CONFIGURE_TUNED}" != false ]; then
     fi
 fi
 
-if [ "${CONFIGURE_FIREWALL}" != false ]; then
+if is_enabled CONFIGURE_FIREWALL; then
     log "Setting up firewall"
     # Enable firewall (firewalld is enabled by default on EL)
     if [ "${FLAVOR}" = "rhel" ]; then
@@ -3307,7 +3392,7 @@ if [ "${NTP_SERVERS}" != "" ]; then
     fi
     if [ -n "${ntp_conf_file}" ]; then
         # Disabling comes first, so that the servers added below are never commented out themselves
-        if [ "${REPLACE_EXISTING_NTP}" != false ]; then
+        if is_enabled REPLACE_EXISTING_NTP; then
             log "Replacing the distribution time sources with ${NTP_SERVERS//:/ }"
             disable_existing_ntp_sources "${chrony_main_conf}" "${ntp_sources_dir}" || log "Failed to disable the existing NTP sources in ${chrony_main_conf}" "ERROR"
         fi
@@ -3333,7 +3418,7 @@ if [ ${IS_VIRTUAL} = true ]; then
 fi
 
 # Prometheus support
-if [ "${CONFIGURE_NODE_EXPORTER}" != false ]; then
+if is_enabled CONFIGURE_NODE_EXPORTER; then
     check_internet
     if [ $? -eq 0 ]; then
         log "Installing Node exporter"
@@ -4219,7 +4304,7 @@ NODE_EXPORTER_INSTALLER_EOF
             # Pin a release with NODE_EXPORTER_VERSION to make installs reproducible.
             # Left empty, the installer resolves the latest release from the GitHub API.
             INSTALL_NODE_EXPORTER_VERSION="${NODE_EXPORTER_VERSION}" \
-            INSTALL_NODE_EXPORTER_SKIP_FIREWALL="${NODE_EXPORTER_SKIP_FIREWALL}" \
+            INSTALL_NODE_EXPORTER_SKIP_FIREWALL="$(boolean_value NODE_EXPORTER_SKIP_FIREWALL)" \
             INSTALL_NODE_EXPORTER_EXEC="--collector.logind --collector.interrupts --collector.systemd --collector.processes --collector.textfile.directory=/var/lib/node_exporter/textfile_collector" \
             sh "${node_exporter_installer}" 2>> "${LOG_FILE}" || log "Failed to setup node_exporter" "ERROR"
         fi
@@ -4290,7 +4375,7 @@ if [ "${KEEP_IPV4_FORWARDING}" != false ]; then
     set_conf_value /etc/sysctl.conf "net.ipv4.ip_forward" "1" || log "Failed to set net.ipv4.ip_forward in /etc/sysctl.conf" "ERROR"
 fi
 
-if [ "${KEEP_ARP_FILTER_DISABLED}" != false ]; then
+if is_enabled KEEP_ARP_FILTER_DISABLED; then
     log "Disabling ARP filtering which may cause network issues with some cloud provider VMs"
     sysctl -w net.ipv4.conf.all.arp_filter=0 2>> "${LOG_FILE}" || log "Failed to set net.ipv4.conf.all.arp_filter at runtime" "ERROR"
     # This file is created by OpenSCAP profiles on EL systems
@@ -4305,23 +4390,23 @@ if [ "${KEEP_ARP_FILTER_DISABLED}" != false ]; then
     set_conf_value /etc/sysctl.conf "net.ipv4.conf.all.arp_filter" "0" || log "Failed to set net.ipv4.conf.all.arp_filter in /etc/sysctl.conf" "ERROR"
 fi
 
-if [ "${ALLOW_UNPROTECTED_FS_SYMLINKS}" != false ]; then
+if is_enabled ALLOW_UNPROTECTED_FS_SYMLINKS; then
     log "Allowing unprotected symlinks in filesystems"
     sysctl -w fs.protected_symlinks=0 2>> "${LOG_FILE}" || log "Failed to set fs.protected_symlinks at runtime" "ERROR"
     set_conf_value /etc/sysctl.d/99-fs-symlinks.conf "fs.protected_symlinks" "0" || log "Failed to set fs.protected_symlinks in /etc/sysctl.d/99-fs-symlinks.conf" "ERROR"
 fi
 
-if [ "${DISABLE_APPARMOR_RUNC_PROFILE}" == true ]; then
+if is_enabled DISABLE_APPARMOR_RUNC_PROFILE; then
     disable_apparmor_runc_profile
 fi
 
 # Setting up watchdog in systemd
-if [ "${CONFIGURE_WATCHDOG}" != false ]; then
+if is_enabled CONFIGURE_WATCHDOG; then
     log "Setting up systemd watchdog"
     write_systemd_dropin system.conf Manager "RuntimeWatchdogSec=60s" || log "Failed to set the systemd watchdog" "ERROR"
 fi
 
-if [ "${CONFIGURE_NETWORK_SCHEDULING}" != false ]; then
+if is_enabled CONFIGURE_NETWORK_SCHEDULING; then
     log "Setup cake qdisc algorithm and bbr congestion control"
     set_conf_value /etc/sysctl.d/99-sched.conf "net.core.default_qdisc" "cake"
     set_conf_value /etc/sysctl.d/99-sched.conf "net.ipv4.tcp_congestion_control" "bbr"
@@ -4354,9 +4439,9 @@ fi
 
 # All sshd directives go into one drop-in, written and checked as a single change, so that a bad
 # value is caught by sshd -t here instead of stopping sshd from starting at the next reboot
-if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ] || [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+if is_enabled CONFIGURE_SSHD_CLIENT_ALIVE || is_enabled CONFIGURE_CIS_SSHD_SETTINGS; then
     if sshd_begin_edit; then
-        if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ]; then
+        if is_enabled CONFIGURE_SSHD_CLIENT_ALIVE; then
             # These three are one policy and belong under one flag. TCPKeepAlive no switches off the
             # TCP level probes precisely because ClientAlive replaces them over the encrypted
             # channel, so setting only the first leaves a machine with no liveness detection at all
@@ -4367,10 +4452,10 @@ if [ "${CONFIGURE_SSHD_CLIENT_ALIVE}" != false ] || [ "${CONFIGURE_CIS_SSHD_SETT
             set_conf_value "${SSHD_EDIT_FILE}" "TCPKeepAlive" "no" " "
             set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveInterval" "120" " "
             set_conf_value "${SSHD_EDIT_FILE}" "ClientAliveCountMax" "3" " "
-        elif [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+        elif is_enabled CONFIGURE_CIS_SSHD_SETTINGS; then
             log "CONFIGURE_SSHD_CLIENT_ALIVE is off, so CIS 5.2.20 is not applied" "NOTICE"
         fi
-        if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ]; then
+        if is_enabled CONFIGURE_CIS_SSHD_SETTINGS; then
             # The following CIS parameters aren't applied automagically by scap profiles
             # CIS 5.2.12
             log "Applying CIS 5.2.12"
@@ -4399,7 +4484,7 @@ fi
 
 # sshd uses the first value it obtains for a keyword, and the distribution drop-in sorts before
 # ours, so X11Forwarding has to be turned off there too rather than only in our own file
-if [ "${CONFIGURE_CIS_SSHD_SETTINGS}" != false ] && [ -f /etc/ssh/sshd_config.d/50-redhat.conf ]; then
+if is_enabled CONFIGURE_CIS_SSHD_SETTINGS && [ -f /etc/ssh/sshd_config.d/50-redhat.conf ]; then
     log "Patching /etc/ssh/sshd_config.d/50-redhat.conf for CIS 5.2.12"
     if sshd_begin_edit /etc/ssh/sshd_config.d/50-redhat.conf; then
         set_conf_value "${SSHD_EDIT_FILE}" "X11Forwarding" "no" " "
@@ -4411,7 +4496,7 @@ fi
 log "Applying CIS 5.6.12 with deviation to allow multiple password changes"
 set_conf_value /etc/login.defs "PASS_MIN_DAYS" "0" " "
 
-if [ "${ALLOW_SUDO}" = true ] && [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
+if is_enabled ALLOW_SUDO && [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
     log "Allowing sudo command regardless of scap profile ${SCAP_PROFILE} which disallows it"
     # Patch sudoers file since noexec is set by default, which prevents sudo
     if [ "${FLAVOR}" = "rhel" ]; then

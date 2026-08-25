@@ -4568,21 +4568,38 @@ for file in /etc/crontab /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.
     chmod og-rwx "${file}" 2>> "${LOG_FILE}" || log "Failed to chmod og-rwx ${file}" "ERROR"
 done
 
-log "Configuring /etc/profile.d/tmout.sh since some shells dont like typeset"
+# This covers bash, sh, ksh and zsh on EL
+# On debian, sh doesn't read /etc/profile.d, and we don't want to tamper with other files
+# to prevent questions at each apt invocation
+log "Configuring the interactive shell timeout in /etc/profile.d/tmout.sh"
 cat << 'EOF' > /etc/profile.d/tmout.sh
-# Set TMOUT to 600 seconds (10 minutes) of inactivity for interactive shells
-
-if [ "$0" = "tcsh" ]; then
-    set autologout=10
-elif [ "$0" = "bash" ]; then
-    typeset -xr TMOUT=600
-else
-    export TMOUT=600
-    readonly TMOUT
+# Written by el_configurator. Interactive shells idle out after 600 seconds of inactivity.
+# Readonly, so that a user cannot raise or clear it.
+if ( TMOUT=600 ) 2>/dev/null; then
+    TMOUT=600
     export TMOUT
+    readonly TMOUT
 fi
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/profile.d/tmout.sh" "ERROR"
+
+# This covers tcsh and csh on EL and debian
+if [ "${FLAVOR}" = "rhel" ]; then
+    CSH_TMOUT_FILE=/etc/profile.d/tmout.csh
+else
+    CSH_TMOUT_FILE=/etc/csh/cshrc.d/tmout.csh
+    # The tcsh package does not ship this directory, it only reads it
+    mkdir -p /etc/csh/cshrc.d 2>> "${LOG_FILE}" || log "Failed to create /etc/csh/cshrc.d" "ERROR"
+fi
+log "Configuring the interactive shell timeout in ${CSH_TMOUT_FILE}"
+cat << 'EOF' > "${CSH_TMOUT_FILE}"
+# Written by el_configurator. Interactive shells idle out after 10 minutes of inactivity.
+# Readonly, so that a user cannot raise or clear it.
+if ( ! $?autologout ) then
+    set -r autologout=10
+endif
+EOF
+[ $? -ne 0 ] && log "Failed to create ${CSH_TMOUT_FILE}" "ERROR"
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then

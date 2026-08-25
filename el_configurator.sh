@@ -277,7 +277,7 @@ is_virtual() {
         if [ "${FLAVOR}" = "rhel" ]; then
             dnf install -y dmidecode 2>> "${LOG_FILE}" || log "Failed to install dmidecode" "ERROR"
         else
-            apt install -y dmidecode 2>> "${LOG_FILE}" || log "Failed to install dmidecode" "ERROR"
+            apt-get install -y dmidecode 2>> "${LOG_FILE}" || log "Failed to install dmidecode" "ERROR"
         fi
     fi
     if ! type -p dmidecode > /dev/null 2>&1; then
@@ -330,11 +330,10 @@ get_el_version() {
             else
                 log_quit "RHEL or alike release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
             fi
-            if [ "${RELEASE}" -eq 8 ] || [ "${RELEASE}" -eq 9 ] || [ "${RELEASE}" -eq 10 ]; then
-                log "Found Linux ${DIST} release ${RELEASE}"
-            else
-                log_quit "Debian or alive release not compatible: dist=${DIST},flavor=${FLAVOR},release=${RELEASE}"
-            fi
+            # No test on RELEASE here: the block above already log_quit on anything that is not
+            # 8, 9 or 10, so the else this replaces could never run, and it named Debian in the
+            # RHEL branch
+            log "Found Linux ${DIST} release ${RELEASE}"
         elif grep 'ID=*debian*' /etc/os-release > /dev/null; then
             FLAVOR=debian
             if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
@@ -1379,7 +1378,10 @@ cleanup_system() {
 
     log "Running ${mode} cleanup"
 
-    # Both modes. The kickstart files carry the root password hash, so they never stay on disk
+    # Both modes. The kickstart files carry the root password hash, so they never stay on disk.
+    # What shred reliably does here is unlink them. The overwriting it also does is not dependable
+    # on a journalling filesystem or on any SSD, as shred(1) says itself, so inst.nosave=all_ks is
+    # what actually keeps the file off the disk and this is only the belt to those braces.
     for _ks in /root/anaconda-ks.cfg /root/original-ks.cfg; do
         if [ -f "${_ks}" ]; then
             shred -uz "${_ks}" 2>> "${LOG_FILE}" || log "Failed to shred ${_ks}" "ERROR"
@@ -1610,25 +1612,6 @@ validate_boolean_options
 get_el_version
 is_virtual
 
-if [ ${IS_VIRTUAL} = true ]; then
-    EL_NAME=VMv${BRAND_VER}
-else
-    EL_NAME=PMv${BRAND_VER}
-fi
-cat << EOF > /etc/issue
-${BRAND_NAME} ${EL_NAME}
-
-IPv4 \4
-IPv6 \6
-
-EOF
-
-# Apply CIS 1.7.3 Add /etc/issue.net file or remote login banners with minimal sys info
-cat << EOF > /etc/issue.net
-${BRAND_NAME} ${ISSUE_MESSAGE_EXTRA}
-${REMOTE_LOGIN_BANNER}
-EOF
-
 check_internet
 if [ $? -eq 0 ]; then
     if ! type curl > /dev/null 2>&1 && ! type wget > /dev/null 2>&1; then
@@ -1636,7 +1619,7 @@ if [ $? -eq 0 ]; then
         if [ "${FLAVOR}" = "rhel" ]; then
             dnf install -y curl 2>> "${LOG_FILE}" || log "curl is missing and cannot be installed" "ERROR"
         elif [ "${FLAVOR}" = "debian" ]; then
-            apt install -y curl 2>> "${LOG_FILE}" || log "curl is missing and cannot be installed" "ERROR"
+            apt-get install -y curl 2>> "${LOG_FILE}" || log "curl is missing and cannot be installed" "ERROR"
         fi
     fi
 
@@ -1644,8 +1627,8 @@ if [ $? -eq 0 ]; then
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt update -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
-        apt dist-upgrade -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
+        apt-get update 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
+        apt-get dist-upgrade -y 2>> "${LOG_FILE}" || log "Failed to update system" "ERROR"
     fi
 fi
 
@@ -1665,7 +1648,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         # Limit to debian only, no ubuntu support for openscap, so we need to check for DIST instead of simply FLAVOR to be debian
         elif [ "${FLAVOR}" = "debian" ] && [ "${DIST}" = "debian" ]; then
             log "Installing openscap utils"
-            apt install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
+            apt-get install -y openscap-utils 2>> "${LOG_FILE}" || log "OpenSCAP is missing and cannot be installed" "ERROR"
             install_ssg_content "${SSG_DATASTREAM}" || log "SCAP content is unavailable, remediation cannot run" "ERROR"
         else
             log_quit "Cannot setup OpenSCAP on this system"
@@ -1713,9 +1696,32 @@ else
     log "No SCAP profile selected. Skipping SCAP profile setup"
 fi
 
+# Written after the SCAP profile has run, not before. A profile carrying a login banner rule
+# rewrites /etc/issue and /etc/issue.net as part of remediation, so branding applied earlier
+# than this was silently replaced by the profile default.
+if [ ${IS_VIRTUAL} = true ]; then
+    EL_NAME=VMv${BRAND_VER}
+else
+    EL_NAME=PMv${BRAND_VER}
+fi
+cat << EOF > /etc/issue
+${BRAND_NAME} ${EL_NAME}
+
+IPv4 \4
+IPv6 \6
+
+EOF
+
+# Apply CIS 1.7.3 Add /etc/issue.net file or remote login banners with minimal sys info
+cat << EOF > /etc/issue.net
+${BRAND_NAME} ${ISSUE_MESSAGE_EXTRA}
+${REMOTE_LOGIN_BANNER}
+EOF
+
+
 if is_enabled SETUP_SELINUX_DEBIAN && [ "${FLAVOR}" = "debian" ]; then
     log "Setting up SELinux on ${FLAVOR}"
-    apt install -y selinux-basics selinux-policy-default auditd policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
+    apt-get install -y selinux-basics selinux-policy-default auditd policycoreutils-python-utils 2>> "${LOG_FILE}" || log "Failed to install selinux tools" "ERROR"
     log "Activating SELinux"
     selinux-activate 2>> "${LOG_FILE}" || log "Failed to activate SELinux" "ERROR"
     log "Setting up SELinux to enforcing"
@@ -1728,7 +1734,7 @@ check_internet
 if [ $? -eq 0 ]; then
     log "Install available with internet. setting up additional packages."
     if  [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -y tar >> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
+        dnf install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
         dnf install -y epel-release 2>> "${LOG_FILE}" || log "Failed to install epel-release, some tools like fail2ban will not be installed" "ERROR"
         # We need to update after installing epel-release since it will update various packages
         dnf update -y 2>> "${LOG_FILE}" || log "Failed to update system after epel-release install" "ERROR"
@@ -1744,19 +1750,21 @@ if [ $? -eq 0 ]; then
         dnf install -y ${available_packages} 2>> "${LOG_FILE}" || log "Failed to install additional tools ${available_packages}" "ERROR"
         enable_crb_repository
         if is_enabled CONFIGURE_AUTOMATIC_UPDATES; then
+            # Still dnf4 and still this package name on EL10: CentOS Stream 10 BaseOS ships
+            # dnf 4.20 and dnf-automatic 4.20, and carries no dnf5 at all (checked 2026-08)
             dnf install -y dnf-automatic 2>> "${LOG_FILE}" || log "Failed to install dnf-automatic" "ERROR"
         fi
         if is_enabled CONFIGURE_TUNED; then
             dnf install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
-        apt install -y htop atop nmon iftop iptraf-ng  tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
+        apt-get install -y tar 2>> "${LOG_FILE}" || log "Cannot install tar" "ERROR"
+        apt-get install -y htop atop nmon iftop iptraf-ng  tar 2>> "${LOG_FILE}" || log "Failed to install additional tools" "ERROR"
         if is_enabled CONFIGURE_AUTOMATIC_UPDATES; then
-            apt install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
+            apt-get install -y unattended-upgrades 2>> "${LOG_FILE}" || log "Failed to install unattended-upgrades" "ERROR"
         fi
         if is_enabled CONFIGURE_TUNED; then
-            apt install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
+            apt-get install -y tuned 2>> "${LOG_FILE}" || log "Failed to install tuned" "ERROR"
         fi
     fi
 else
@@ -1771,7 +1779,7 @@ if [ ${IS_VIRTUAL} != true ]; then
         dnf install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
         SMARTD_CONF_FILE=/etc/smartmontools/smartd.conf
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
+        apt-get install -y smartmontools nvme-cli 2>> "${LOG_FILE}" || log "Failed to install smartmontools" "ERROR"
         SMARTD_CONF_FILE=/etc/smartd.conf
         # Override smartd service name for debian 13+ which became smartmontools instead of smartd
         if [ "${RELEASE}" -ge 13 ]; then
@@ -1795,7 +1803,7 @@ if [ ${IS_VIRTUAL} != true ]; then
             fi
         elif [ "${FLAVOR}" = "debian" ]; then
             # Debian does not come with ensurepip but has prometheus-client library
-            apt install -y python3-prometheus-client 2>> "${LOG_FILE}" || log "Failed to install python3 and pip3" "ERROR"
+            apt-get install -y python3-prometheus-client 2>> "${LOG_FILE}" || log "Failed to install python3 and pip3" "ERROR"
         fi
         log "Setting up python smart script for prometheus"
 
@@ -2866,9 +2874,9 @@ EOF
 
     log "Setting up lm_sensors"
     if [ "${FLAVOR}" = "rhel" ]; then
-        dnf install -y lm_sensors || log "Failed to install lm_sensors" "ERROR"
+        dnf install -y lm_sensors 2>> "${LOG_FILE}" || log "Failed to install lm_sensors" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y lm-sensors || log "Failed to install lm_sensors" "ERROR"
+        apt-get install -y lm-sensors 2>> "${LOG_FILE}" || log "Failed to install lm_sensors" "ERROR"
     fi
 
     sensors-detect --auto | grep "no driver for ITE IT8613E" > /dev/null 2>&1
@@ -3158,8 +3166,26 @@ if is_enabled CONFIGURE_SERIAL_TERMINAL; then
     sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=\(.*\)quiet\(.*\)/GRUB_CMDLINE_LINUX_DEFAULT=\1\2/g' /etc/default/grub 2>> "${LOG_FILE}" || log "sed failed on /etc/default/grub for removing quiet" "ERROR"
     # Update grub to add console
     if [ "${FLAVOR}" = "rhel" ]; then
-        grubby --update-kernel=ALL --args="console=tty0 console=ttyS0,115200,n8" || log "Enabling serial getty failed" "ERROR"
-        grub2-mkconfig --update-bls-cmdline -o /boot/grub2/grub.cfg 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
+        grubby --update-kernel=ALL --args="console=tty0 console=ttyS0,115200,n8" 2>> "${LOG_FILE}" \
+            || log "Failed to add console arguments to the kernel command line" "ERROR"
+        # Regenerated for the GRUB_TERMINAL and GRUB_SERIAL_COMMAND edits above, which live in
+        # grub.cfg rather than in the boot loader entries.
+        #
+        # Deliberately without --update-bls-cmdline. That flag rewrites the BLS entries from
+        # GRUB_CMDLINE_LINUX in /etc/default/grub, which carries no console arguments here, so it
+        # undid the grubby call on the line above. Red Hat patched grub2-mkconfig to leave the BLS
+        # cmdline alone by default for that exact reason, and the flag opts back in. It also does
+        # not exist before EL9, where it made the whole call fail instead.
+        #
+        # EL9 unified both firmwares on /boot/grub2/grub.cfg and left a configfile stub in the ESP,
+        # so only EL8 on UEFI keeps its real configuration under /boot/efi.
+        grub_cfg=/boot/grub2/grub.cfg
+        if [ "${RELEASE}" -eq 8 ] && [ -d /sys/firmware/efi ]; then
+            for candidate in /boot/efi/EFI/*/grub.cfg; do
+                [ -f "${candidate}" ] && grub_cfg="${candidate}"
+            done
+        fi
+        grub2-mkconfig -o "${grub_cfg}" 2>> "${LOG_FILE}" || log "grub2-mkconfig failed" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
         set_grub_console_args /etc/default/grub "GRUB_CMDLINE_LINUX" "console=tty0 console=ttyS0,115200,n8" \
             || log "Failed to set console arguments in /etc/default/grub" "ERROR"
@@ -3304,7 +3330,7 @@ if is_enabled CONFIGURE_FIREWALL; then
         systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to enable firewalld" "ERROR"
         systemctl start firewalld || log "Cannot start firewalld. This happens in kickstart environment, but not in production"
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
+        apt-get install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         configure_ufw
     fi
 fi
@@ -3320,7 +3346,7 @@ if [ "${CONFIGURE_FAIL2BAN}" != false ]; then
       		__FAIL2BAN_INSTALLED=true
         fi
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y fail2ban 2>> "${LOG_FILE}"
+        apt-get install -y fail2ban 2>> "${LOG_FILE}"
         if [ $? -ne 0 ]; then
             log "Failed to install fail2ban" "ERROR"
             __FAIL2BAN_INSTALLED=false
@@ -3378,7 +3404,7 @@ if [ "${NTP_SERVERS}" != "" ]; then
         ntp_conf_file=/etc/chrony.conf
         chrony_main_conf=/etc/chrony.conf
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
+        apt-get install -y chrony 2>> "${LOG_FILE}" || log "Failed to install chrony" "ERROR"
         chrony_svc=chrony
         # Debian ships /etc/chrony/sources.d together with the sourcedir directive that reads it
         ntp_conf_file=/etc/chrony/sources.d/local-ntp-server.sources
@@ -3410,7 +3436,7 @@ if [ ${IS_VIRTUAL} = true ]; then
         dnf install -y qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to install qemu-guest-agent" "ERROR"
         setsebool -P virt_qemu_ga_read_nonsecurity_files 1 2>> "${LOG_FILE}" || log "Failed to SELinux for qemu virtual machine" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to install qemu-guest-agent" "ERROR"
+        apt-get install -y qemu-guest-agent 2>> "${LOG_FILE}" || log "Failed to install qemu-guest-agent" "ERROR"
     else
         log_quit "Cannot setup qemu-guest-agent on this system"
     fi
@@ -3422,7 +3448,6 @@ if is_enabled CONFIGURE_NODE_EXPORTER; then
     check_internet
     if [ $? -eq 0 ]; then
         log "Installing Node exporter"
-        cd /opt || log "No /opt directory found"
         if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
             mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
         fi
@@ -4432,7 +4457,7 @@ EOF
         if [ $? -ne 0 ]; then
             log "Failed to create /etc/apt/apt.conf.d/01autoremove-kernels" "ERROR"
         fi
-        apt autoremove --purge -y 2>> "${LOG_FILE}" || log "Failed to autoremove old kernels" "ERROR"
+        apt-get autoremove --purge -y 2>> "${LOG_FILE}" || log "Failed to autoremove old kernels" "ERROR"
     fi
 fi
 
@@ -4502,7 +4527,7 @@ if is_enabled ALLOW_SUDO && [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != f
     if [ "${FLAVOR}" = "rhel" ]; then
         dnf install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
     elif [ "${FLAVOR}" = "debian" ]; then
-        apt install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
+        apt-get install -y sudo 2>> "${LOG_FILE}" || log "Failed to install sudo" "ERROR"
     fi
     # The scap profile has just locked sudo down: file_permissions_sudo sets /usr/bin/sudo to 4110
     # and sudo_dedicated_group gives it to group root, so nothing but root can execute it. Undoing

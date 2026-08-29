@@ -127,6 +127,13 @@ NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall fo
 # Left empty, the latest release is resolved from the GitHub API at install time
 NODE_EXPORTER_VERSION=""
 
+# Account the node_exporter service runs as. Either root, or a name created as a system account if
+# it does not already exist. Every collector this script enables works unprivileged, so the default
+# is the unprivileged one, and the collectors that gather metrics needing root keep running as root
+# from cron. See the README for what changes and what is given up.
+NODE_EXPORTER_USER=prometheus
+#NODE_EXPORTER_USER=root
+
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true
 
@@ -909,6 +916,18 @@ TasksMax=512
 NoNewPrivileges=true
 EOF
 
+    if [ "${NODE_EXPORTER_USER}" != root ]; then
+        {
+            echo "# Unprivileged. The collectors enabled here all read through interfaces that do not"
+            echo "# need root, and the ones whose data does keep running as root from cron instead."
+            echo "User=${NODE_EXPORTER_USER}"
+            echo "Group=${NODE_EXPORTER_USER}"
+        } >> "${dropin}" 2>> "${LOG_FILE}" || {
+            log "Cannot set the node_exporter account in ${dropin}" "ERROR"
+            return 1
+        }
+    fi
+
     if [ ! -s "${dropin}" ]; then
         log "Cannot write ${dropin}" "ERROR"
         return 1
@@ -1598,6 +1617,63 @@ validate_boolean_options() {
     if [ -n "${bad}" ]; then
         log_quit "Cannot interpret these options:${bad}. Use true or false" "ERROR"
     fi
+    return 0
+}
+
+setup_node_exporter_user() {
+    local login_shell
+
+    case "${NODE_EXPORTER_USER}" in
+        root) return 0 ;;
+        ""|*[!a-z0-9_-]*|[!a-z_]*)
+            log "NODE_EXPORTER_USER is [${NODE_EXPORTER_USER}], which is not a usable account name" "ERROR"
+            return 1
+            ;;
+    esac
+
+    if id -u "${NODE_EXPORTER_USER}" > /dev/null 2>&1; then
+        return 0
+    fi
+
+    login_shell=/usr/sbin/nologin
+    [ -x "${login_shell}" ] || login_shell=/sbin/nologin
+    [ -x "${login_shell}" ] || login_shell=/bin/false
+    if ! useradd --system --no-create-home --home-dir /var/lib/node_exporter \
+        --shell "${login_shell}" "${NODE_EXPORTER_USER}" 2>> "${LOG_FILE}"; then
+        log "Failed to create the ${NODE_EXPORTER_USER} account for node_exporter" "ERROR"
+        return 1
+    fi
+    log "Created system account ${NODE_EXPORTER_USER} for node_exporter"
+    return 0
+}
+
+prepare_node_exporter_textfile_dir() {
+    local dir=/var/lib/node_exporter/textfile_collector
+    local group="${NODE_EXPORTER_USER}"
+
+    setup_node_exporter_user || return 1
+    [ "${NODE_EXPORTER_USER}" = root ] && group=root
+
+    if [ ! -d "${dir}" ]; then
+        mkdir -p "${dir}" 2>> "${LOG_FILE}" || {
+            log "Failed to create ${dir}" "ERROR"
+            return 1
+        }
+    fi
+    # The parent has to be traversable, and mkdir honours whatever umask this run inherited
+    chmod 0755 /var/lib/node_exporter 2>> "${LOG_FILE}" || log "Failed to chmod /var/lib/node_exporter" "ERROR"
+    chown "root:${group}" "${dir}" 2>> "${LOG_FILE}" || {
+        log "Failed to give ${dir} to group ${group}" "ERROR"
+        return 1
+    }
+    # 2750, so new files inherit the group from parent dir
+    chmod 2750 "${dir}" 2>> "${LOG_FILE}" || {
+        log "Failed to set the mode on ${dir}" "ERROR"
+        return 1
+    }
+    # Anything an earlier run left behind predates the group, so bring it along
+    chown "root:${group}" "${dir}"/*.prom 2>/dev/null
+    chmod 0640 "${dir}"/*.prom 2>/dev/null
     return 0
 }
 
@@ -2637,11 +2713,9 @@ if __name__ == "__main__":
 EOF
 [ $? -ne 0 ] && log "Failed to create /usr/local/bin/nvme_metrics.py" "ERROR"
         log "Setting up smart & nvme for prometheus task"
-        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
-            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
-        fi
-        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
-        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
+        prepare_node_exporter_textfile_dir
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root umask 0027; python3 /usr/local/bin/smartmon.py > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+        echo -e "MAILTO=\"\"\nPATH=\"/usr/sbin:/usr/bin\"\n*/5 * * * * root umask 0027; python3 /usr/local/bin/nvme_metrics.py > /var/lib/node_exporter/textfile_collector/nvme_metrics.prom" > /etc/cron.d/nvme_metrics 2>> "${LOG_FILE}" || log "Failed to add nvme metrics cron job" "ERROR"
 
     else
         log "Setting up bash smart script for prometheus"
@@ -2860,10 +2934,8 @@ EOF
 
         chmod +x /usr/local/bin/smartmon.sh 2>> "${LOG_FILE}" || log "Failed to chmod /usr/local/bin/smartmon.sh" "ERROR"
         log "Setting up smart script for prometheus task"
-        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
-            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
-        fi
-        echo -e "MAILTO=\"\"\n*/5 * * * * root /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
+        prepare_node_exporter_textfile_dir
+        echo -e "MAILTO=\"\"\n*/5 * * * * root umask 0027; /bin/bash /usr/local/bin/smartmon.sh > /var/lib/node_exporter/textfile_collector/smart_metrics.prom" > /etc/cron.d/smartmon_metrics 2>> "${LOG_FILE}" || log "Failed to add smartmon cron job" "ERROR"
     fi
 
     # TODO Test this for Debian
@@ -3448,9 +3520,7 @@ if is_enabled CONFIGURE_NODE_EXPORTER; then
     check_internet
     if [ $? -eq 0 ]; then
         log "Installing Node exporter"
-        if [ ! -d /var/lib/node_exporter/textfile_collector ]; then
-            mkdir -p /var/lib/node_exporter/textfile_collector 2>> "${LOG_FILE}" || log "Failed to create /var/lib/node_exporter/textfile_collector directory" "ERROR"
-        fi
+        prepare_node_exporter_textfile_dir
         # Node exporter installer, vendored so that provisioning never pipes remote code into a shell.
         # Upstream: https://github.com/carlocorradini/node_exporter_installer (MIT, see LICENSES/)
         #   file    install.sh
@@ -4326,6 +4396,7 @@ NODE_EXPORTER_INSTALLER_EOF
         if [ ! -s "${node_exporter_installer}" ]; then
             log "Failed to write node_exporter installer" "ERROR"
         else
+            setup_node_exporter_user || log "node_exporter will run as root instead" "NOTICE"
             # Pin a release with NODE_EXPORTER_VERSION to make installs reproducible.
             # Left empty, the installer resolves the latest release from the GitHub API.
             INSTALL_NODE_EXPORTER_VERSION="${NODE_EXPORTER_VERSION}" \
@@ -4350,6 +4421,10 @@ EOF
     # EL configurator metrics
     cat << 'EOF' > /usr/local/bin/el_configurator_metrics.sh
 #!/usr/bin/env bash
+
+# The textfile collector directory is setgid to the node_exporter group. 0027 keeps what is written
+# here readable by that group, which 0077 from the ANSSI profile would not.
+umask 0027
 
 el_configurator_date=0
 el_configurator_date=$(date -r /root/.el-configurator.log +%s 2>/dev/null)

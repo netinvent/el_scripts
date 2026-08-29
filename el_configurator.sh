@@ -51,7 +51,16 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
+# The options below carry a shellcheck disable=SC2034 each. They are read through is_enabled, which
+# is given the option's name and reads it with ${!1}, and shellcheck cannot follow indirect
+# expansion, so without it every one is reported as unused.
+#
+# Not export, which is what the warning itself suggests: get_kernel_arguments refuses to overwrite an
+# exported variable, so exporting these would silently make every one impossible to set from the boot
+# line, which is the whole point of the NPF_ arguments.
+
 # Re-eval the scap profile after all custom configs
+# shellcheck disable=SC2034
 RUN_CLOSING_SCAP_SCAN=true
 
 # SCAP Security Guide packages for Debian 12+.
@@ -73,43 +82,56 @@ EOF
 
 # By default, ANSSI profiles disables sudo (which is a good thing, but el10 also disables root account by default, so we need at least a root account or sudo working)
 # Does only allow sudo binary, you still need a user allowed to sudo via wheel/sudo groups
+# shellcheck disable=SC2034
 ALLOW_SUDO=false
 
 # Setup SELinux on Debian
+# shellcheck disable=SC2034
 SETUP_SELINUX_DEBIAN=false
 
 # Configure serial terminal
+# shellcheck disable=SC2034
 CONFIGURE_SERIAL_TERMINAL=true
 
 # Add resize_term and resize_term2 scripts to /etc/profile.d
+# shellcheck disable=SC2034
 CONFIGURE_TERMINAL_RESIZER=true
 
 # Install and configure node_exporter
+# shellcheck disable=SC2034
 CONFIGURE_NODE_EXPORTER=true
 # See below for firewall settings
 
 # Setup python smartmontools / nvme tooling for prometheus on physical systems
+# shellcheck disable=SC2034
 CONFIGURE_NODE_EXPORTER_PYTHON_EXTENSIONS=true
 
 # Make sure system automatically installs security updates
+# shellcheck disable=SC2034
 CONFIGURE_AUTOMATIC_UPDATES=true
 
 # Enable system watchdog
+# shellcheck disable=SC2034
 CONFIGURE_WATCHDOG=true
 
 # Use specific network schedulers (bbr + cake)
+# shellcheck disable=SC2034
 CONFIGURE_NETWORK_SCHEDULING=true
 
 # Add client keep alives to sshd
+# shellcheck disable=SC2034
 CONFIGURE_SSHD_CLIENT_ALIVE=true
 
 # Configure SSH CIS settings
+# shellcheck disable=SC2034
 CONFIGURE_CIS_SSHD_SETTINGS=true
 
 # Implement tuned profiles
+# shellcheck disable=SC2034
 CONFIGURE_TUNED=true
 
 # Install and configure firewall
+# shellcheck disable=SC2034
 CONFIGURE_FIREWALL=true
 
 # Configure semicolon separated list of NTP servers
@@ -117,14 +139,18 @@ CONFIGURE_FIREWALL=true
 NTP_SERVERS=""
 
 # Add NTP servers or replace existing default OS settings
+# shellcheck disable=SC2034
 REPLACE_EXISTING_NTP=false
 
 # Optional whitelist IPs / CIDR for firewall, semicolon separated
 #FIREWALL_WHITELIST_IP_LIST="192.168.200.0/24:10.0.0.1"
 FIREWALL_WHITELIST_IP_LIST=""
+# shellcheck disable=SC2034
 FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=true # Allow all ports for whitelisted IPs, if not enabled, only ssh is allowed
 
+# shellcheck disable=SC2034
 NODE_EXPORTER_USE_IP_WHITELISTS=true # Use firewall whitelists for node exporter if they're defined, unless all ports are whitelisted
+# shellcheck disable=SC2034
 NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall for everyone
 # Pin the node_exporter release to install, eg v1.8.2, so that installs are reproducible
 # Left empty, the latest release is resolved from the GitHub API at install time
@@ -149,14 +175,17 @@ KEEP_IPV4_FORWARDING=false
 
 # Keep arp_filter disabled (may cause network issues with some cloud provider VMs)
 # Setting this to false enhances security, but may cause network issues like sporadic loss of network
+# shellcheck disable=SC2034
 KEEP_ARP_FILTER_DISABLED=true
 
 # Optional allow non protected fs symlinks
 # Will be necessary for docker to write to /dev/stdout via mount --bind links
+# shellcheck disable=SC2034
 ALLOW_UNPROTECTED_FS_SYMLINKS=false
 
 # Apparmor disable runc profile in order to allow docker/podman to run on Debian machines with OpenSCAP
 # This is not an ideal fix from a security perspective
+# shellcheck disable=SC2034
 DISABLE_APPARMOR_RUNC_PROFILE=true
 
 VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
@@ -1449,12 +1478,14 @@ cleanup_system() {
     fi
 
     if [ "${FLAVOR}" = "rhel" ]; then
-        # /var/lib/dnf holds history.sqlite, so this is what dnf history undo and rollback lose.
-        # The cache directories below are what dnf clean all above does not reach on older releases
-        rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/* 2>> "${LOG_FILE}"
-        rm -rf /var/cache/yum/* /var/log/rhsm/* 2>> "${LOG_FILE}"
-        # The rollback point for authselect apply-changes
-        rm -rf /var/lib/authselect/backups/* 2>> "${LOG_FILE}"
+        {
+            # /var/lib/dnf holds history.sqlite, so this is what dnf history undo and rollback lose.
+            # The cache directories below are what dnf clean all above does not reach on older releases
+            rm -rf /var/lib/dnf/* /var/lib/yum/repos/* /var/lib/yum/yumdb/*
+            rm -rf /var/cache/yum/* /var/log/rhsm/*
+            # The rollback point for authselect apply-changes
+            rm -rf /var/lib/authselect/backups/*
+        } 2>> "${LOG_FILE}"
     elif [ "${FLAVOR}" = "debian" ]; then
         # apt keeps its transaction record in /var/log/apt, and /var/backups holds the rotated
         # copies of the account databases and of the dpkg status file
@@ -1683,7 +1714,7 @@ prepare_node_exporter_textfile_dir() {
 
 # Re-eval OpenSCAP after all custom configs are done
 run_closing_scap_scan() {
-    local report scan_output group rc passed failed other
+    local report scan_output rc passed failed other
 
     if ! is_enabled RUN_CLOSING_SCAP_SCAN; then
         return 0

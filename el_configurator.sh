@@ -1683,7 +1683,7 @@ prepare_node_exporter_textfile_dir() {
 
 # Re-eval OpenSCAP after all custom configs are done
 run_closing_scap_scan() {
-    local report scan_output group prom rc passed failed other
+    local report scan_output group rc passed failed other
 
     if ! is_enabled RUN_CLOSING_SCAP_SCAN; then
         return 0

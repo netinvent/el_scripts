@@ -51,6 +51,9 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
+# Re-eval the scap profile after all custom configs
+RUN_CLOSING_SCAP_SCAN=true
+
 # SCAP Security Guide packages for Debian 12+.
 # Debian's own suites trail one release for SCAP content: bookworm ships ssg 0.1.65, which carries
 # no debian12 datastream, and trixie ships 0.1.76, which carries no debian13 one. So the packages
@@ -1557,6 +1560,7 @@ BOOLEAN_OPTIONS=(
     NODE_EXPORTER_SKIP_FIREWALL
     NODE_EXPORTER_USE_IP_WHITELISTS
     REPLACE_EXISTING_NTP
+    RUN_CLOSING_SCAP_SCAN
     SETUP_SELINUX_DEBIAN
 )
 
@@ -1674,6 +1678,57 @@ prepare_node_exporter_textfile_dir() {
     # Anything an earlier run left behind predates the group, so bring it along
     chown "root:${group}" "${dir}"/*.prom 2>/dev/null
     chmod 0640 "${dir}"/*.prom 2>/dev/null
+    return 0
+}
+
+# Re-eval OpenSCAP after all custom configs are done
+run_closing_scap_scan() {
+    local report scan_output group prom rc passed failed other
+
+    if ! is_enabled RUN_CLOSING_SCAP_SCAN; then
+        return 0
+    fi
+    if [ -z "${SCAP_PROFILE}" ] || [ "${SCAP_PROFILE}" = false ]; then
+        return 0
+    fi
+    if ! type oscap > /dev/null 2>&1; then
+        log "oscap is not installed, so there is no closing verification scan" "NOTICE"
+        return 0
+    fi
+    if [ ! -f "${SSG_DATASTREAM}" ]; then
+        log "No SCAP content at ${SSG_DATASTREAM}, so there is no closing verification scan" "NOTICE"
+        return 0
+    fi
+
+    mkdir -p /root/openscap_report 2>> "${LOG_FILE}" || {
+        log "Cannot create /root/openscap_report" "ERROR"
+        return 1
+    }
+    scan_output=$(mktemp) || {
+        log "Cannot create a temporary file for the verification scan" "ERROR"
+        return 1
+    }
+    report="/root/openscap_report/${SCAP_PROFILE}_verification_$(date '+%Y-%m-%d_%H%M%S').html"
+
+    log "Verifying this machine against ${SCAP_PROFILE}, without remediating"
+    oscap xccdf eval --profile "${SCAP_PROFILE}" --report "${report}" "${SSG_DATASTREAM}" \
+        > "${scan_output}" 2>> "${LOG_FILE}"
+    rc=$?
+    # 0 is every rule passed and 2 is at least one did not. Anything else is oscap itself failing,
+    # which is worth an ERROR because it means this check produced no answer at all.
+    if [ "${rc}" -ne 0 ] && [ "${rc}" -ne 2 ]; then
+        log "The closing verification scan could not run, oscap exited ${rc}" "ERROR"
+        rm -f "${scan_output}"
+        return 1
+    fi
+
+    passed=$(grep -cE '^Result[[:space:]]+pass' "${scan_output}")
+    failed=$(grep -cE '^Result[[:space:]]+fail' "${scan_output}")
+    other=$(grep -cE '^Result[[:space:]]+' "${scan_output}")
+    other=$((other - passed - failed))
+    rm -f "${scan_output}"
+
+    log "Verification scan: ${passed} passed, ${failed} failed, ${other} neither. Report at ${report}"
     return 0
 }
 
@@ -4700,6 +4755,9 @@ if ( ! $?autologout ) then
 endif
 EOF
 [ $? -ne 0 ] && log "Failed to create ${CSH_TMOUT_FILE}" "ERROR"
+
+# The last thing that touches the machine has run. Check what the profile makes of the result.
+run_closing_scap_scan
 
 # Setting up banner
 if [ "${POST_INSTALL_SCRIPT_GOOD}" != true ]; then

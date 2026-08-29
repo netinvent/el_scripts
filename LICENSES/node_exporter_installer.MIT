@@ -1,0 +1,33 @@
+Third party component vendored into el_configurator.sh
+
+  Component : node_exporter_installer (install.sh)
+  Upstream  : https://github.com/carlocorradini/node_exporter_installer
+  Commit    : 08f4b4d08fd3c5a462aaa23599a82f154c763376 (2023-12-18)
+  sha256    : 920a32161e15b1d8bc90d1d5f90a1399e5378b4cbe3471536712757af4ae9ac7
+  Embedded  : verbatim, as a heredoc in the CONFIGURE_NODE_EXPORTER section
+
+The full license text of that component follows.
+
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2022-2023 Carlo Corradini
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

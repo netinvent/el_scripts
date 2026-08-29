@@ -336,14 +336,14 @@ get_el_version() {
             log "Found Linux ${DIST} release ${RELEASE}"
         elif grep 'ID=*debian*' /etc/os-release > /dev/null; then
             FLAVOR=debian
-            if grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
-                RELEASE=11
-            elif grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
+            if grep -e 'VERSION_ID="12' /etc/os-release > /dev/null; then
                 RELEASE=12
             elif grep -e 'VERSION_ID="13' /etc/os-release > /dev/null; then
                 RELEASE=13
+            elif grep -e 'VERSION_ID="11' /etc/os-release > /dev/null; then
+                log "Debian 11 is not supported: its SCAP content carries no anssi_bp28_* profiles, only anssi_np_nt28_*" "ERROR"
             fi
-            if [ "${RELEASE}" -eq 11 ] || [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
+            if [ "${RELEASE}" -eq 12 ] || [ "${RELEASE}" -eq 13 ]; then
                 log "Found Linux ${DIST} release ${RELEASE}"
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE} "

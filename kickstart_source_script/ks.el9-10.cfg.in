@@ -1,0 +1,86 @@
+# EL configurator Anaconda script 2026010701
+# version=RHEL9
+# version=RHEL10
+# Use text mode install
+text
+#repo --name="AppStream" --baseurl=file:///run/install/sources/mount-0000-cdrom/AppStream
+repo --name="AppStream" --baseurl=file:///run/install/repo/AppStream
+
+# Commented since we don't have internet for sure
+#repo --name=epel --baseurl=https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/ --install
+%addon com_redhat_kdump --disable
+%end
+
+
+
+%pre --interpreter=/bin/python3
+@@KICKSTART_PARTITION_CREATOR@@
+%end
+
+# System language
+lang fr_FR.UTF-8
+
+# Network information
+%include /tmp/network
+%include /tmp/hostname
+
+# Use CDROM installation media
+cdrom
+
+%packages
+@^minimal-environment
+nano
+iotop
+policycoreutils-python-utils
+tar
+bind-utils
+sysstat
+tuned
+dnf-automatic
+# required since ANSSI profile configures rsyslogd to send logs to 'logcollector' fqdn entry with TLS
+rsyslog-gnutls
+
+# Non included in minimal, hence we need internet configured right or at least a non minimal cd
+#xterm-resize # replaced with /etc/profile.d/term_resize.sh hack
+
+# EPEL dependent (will be installed in postscript)
+#atop
+#nmon
+#iptraf
+#iftop
+
+# Security
+openscap
+scap-security-guide
+
+%include /tmp/packages
+%end
+
+# Run the Setup Agent on first boot
+firstboot --disable
+# Do not configure the X Window System
+skipx
+
+%include /tmp/partitions
+
+timesource --ntp-server=0.fr.pool.ntp.org
+# System timezone
+timezone Europe/Paris --utc
+
+# We use authselect-compat
+authselect --passalgo=sha512 --useshadow
+
+# Keyboard layouts
+keyboard --vckeymap=fr-oss --xlayouts='fr (oss)'
+# earlier for EL8
+# keyboard fr
+selinux --enforcing
+firewall --enabled --service ssh
+lang C.UTF-8
+
+%include /tmp/users
+%post
+@@EL_CONFIGURATOR@@
+%end
+
+reboot --eject

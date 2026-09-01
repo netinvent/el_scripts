@@ -51,6 +51,12 @@ SCAP_PROFILE=anssi_bp28_high
 #SCAP_PROFILE=anssi_bp28_intermediary
 #SCAP_PROFILE=false
 
+# OpenSCAP rules can be memory hungry on debian because it walks the entire filesystem and holds results in memory
+# Add an optional temporary swap file in that case. Set to 0 to disable
+SCAP_SWAP_SIZE_MB=4096
+# Temporary swap file path. Please check that there is enough space
+SCAP_SWAP_FILE=/var/tmp/el_configurator_scap.swap
+
 # Re-eval the scap profile after all custom configs
 RUN_CLOSING_SCAP_SCAN=true
 
@@ -131,9 +137,10 @@ NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall fo
 NODE_EXPORTER_VERSION=""
 
 # Account the node_exporter service runs as. Either root, or a name created as a system account if
-# it does not already exist. Every collector this script enables works unprivileged, so the default
-# is the unprivileged one, and the collectors that gather metrics needing root keep running as root
-# from cron. See the README for what changes and what is given up.
+# it does not already exist. Every collector this script enables works unprivileged, and the ones
+# whose data needs root keep running as root from cron either way, so switching this to prometheus
+# costs only the RAPL power metrics. It is left at root until that has been confirmed on a real
+# machine. See the README for what changes and what is given up.
 #NODE_EXPORTER_USER=prometheus
 NODE_EXPORTER_USER=root
 
@@ -1734,6 +1741,107 @@ run_closing_scap_scan() {
     return 0
 }
 
+add_scap_swap() {
+    local size_mb="${SCAP_SWAP_SIZE_MB}"
+    local file="${SCAP_SWAP_FILE}"
+    local directory mem_mb swap_mb avail_mb fstype
+
+    case "${size_mb}" in
+        ''|0) return 0 ;;
+        *[!0-9]*)
+            log "SCAP_SWAP_SIZE_MB is [${size_mb}], which is not a number of megabytes" "ERROR"
+            return 1
+            ;;
+    esac
+    if [ -z "${file}" ]; then
+        log "SCAP_SWAP_FILE is empty, cannot add swap for the OpenSCAP run" "ERROR"
+        return 1
+    fi
+
+    mem_mb=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+    swap_mb=$(awk '/^SwapTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
+    [ -z "${mem_mb}" ] && mem_mb=0
+    [ -z "${swap_mb}" ] && swap_mb=0
+
+    # 8192 is not a measurement, it is a line drawn above the 4 GB machine this was reported on.
+    # A machine already past it is left alone, so this costs nothing on anything reasonably sized.
+    if [ "$((mem_mb + swap_mb))" -ge 8192 ]; then
+        log "Machine has ${mem_mb}MB memory and ${swap_mb}MB swap, no temporary swap needed for OpenSCAP"
+        return 0
+    fi
+
+    # A file left behind by a run that was interrupted, rather than one this run made
+    if [ -e "${file}" ]; then
+        swapoff "${file}" > /dev/null 2>&1
+        rm -f "${file}" 2>> "${LOG_FILE}"
+    fi
+
+    directory=$(dirname "${file}")
+    mkdir -p "${directory}" 2>> "${LOG_FILE}" || {
+        log "Cannot create ${directory} for the temporary swap file" "ERROR"
+        return 1
+    }
+    avail_mb=$(df -Pm "${directory}" 2>/dev/null | awk 'NR == 2 {print $4}')
+    if [ -n "${avail_mb}" ] && [ "${avail_mb}" -lt "$((size_mb + 256))" ]; then
+        log "Only ${avail_mb}MB free on ${directory}, not enough for a ${size_mb}MB swap file. Set SCAP_SWAP_FILE to a filesystem with room" "ERROR"
+        return 1
+    fi
+
+    log "Adding ${size_mb}MB of temporary swap at ${file} for the OpenSCAP run"
+
+    # btrfs refuses a swap file that is copy on write, and the attribute can only be set while the
+    # file is empty, so it goes on before anything is written to it
+    fstype=$(df -PT "${directory}" 2>/dev/null | awk 'NR == 2 {print $2}')
+    if [ "${fstype}" = "btrfs" ]; then
+        : > "${file}" 2>> "${LOG_FILE}"
+        chattr +C "${file}" 2>> "${LOG_FILE}" || log "Cannot mark ${file} as no copy on write, btrfs may refuse it" "NOTICE"
+    fi
+
+    # dd rather than fallocate: a fallocated file has unwritten extents, and swapon refuses those on
+    # XFS, which is what RHEL installs by default
+    if ! dd if=/dev/zero of="${file}" bs=1M count="${size_mb}" status=none 2>> "${LOG_FILE}"; then
+        log "Cannot write the temporary swap file ${file}" "ERROR"
+        rm -f "${file}"
+        return 1
+    fi
+    # swapon refuses a file anyone else can read, and it would hold memory contents
+    chmod 0600 "${file}" 2>> "${LOG_FILE}" || {
+        log "Cannot set the mode on ${file}" "ERROR"
+        rm -f "${file}"
+        return 1
+    }
+    if ! mkswap "${file}" >> "${LOG_FILE}" 2>&1; then
+        log "mkswap failed on ${file}" "ERROR"
+        rm -f "${file}"
+        return 1
+    fi
+    if ! swapon "${file}" 2>> "${LOG_FILE}"; then
+        log "swapon failed on ${file}" "ERROR"
+        rm -f "${file}"
+        return 1
+    fi
+    return 0
+}
+
+# Takes the temporary swap away again. Only ever touches the file add_scap_swap made.
+remove_scap_swap() {
+    local file="${SCAP_SWAP_FILE}"
+
+    [ -z "${file}" ] && return 0
+    [ -e "${file}" ] || return 0
+
+    if ! swapoff "${file}" 2>> "${LOG_FILE}"; then
+        log "Cannot swapoff ${file}, leaving it in place rather than pulling it from under the system" "ERROR"
+        return 1
+    fi
+    rm -f "${file}" 2>> "${LOG_FILE}" || {
+        log "Cannot remove ${file}" "ERROR"
+        return 1
+    }
+    log "Removed the temporary swap file"
+    return 0
+}
+
 ## Script entry point
 POST_INSTALL_SCRIPT_GOOD=true
 
@@ -1786,6 +1894,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         else
             log_quit "Cannot setup OpenSCAP on this system"
         fi
+        add_scap_swap || log "Continuing without the temporary swap, oscap may be killed on a small machine" "ERROR"
         log "Setting up scap profile ${SCAP_PROFILE} with remote resources"
 
         # Note: on certain debian 12 setups, oscap is stuck forever with anssi_bp_28_high profile when doing FS checks
@@ -1794,25 +1903,31 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
-        # exit code 2 means rules have been partially applied, which can be normal
-        if [ $? -eq 1 ]; then
-            log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
+        scap_rc=$?
+        # 0 is a clean run and 2 is "some rule failed", which is normal here. Anything else means
+        # oscap did not finish: a machine short of memory has it killed partway through remediation,
+        # and 137 is not 1, so testing for 1 alone reported that as a success and carried on.
+        if [ "${scap_rc}" -ne 0 ] && [ "${scap_rc}" -ne 2 ]; then
+            log "OpenSCAP exited ${scap_rc}, remediation did not finish. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results with remote resources"
             oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     else
+        add_scap_swap || log "Continuing without the temporary swap, oscap may be killed on a small machine" "ERROR"
         log "Setting up scap profile ${SCAP_PROFILE} without internet"
         oscap xccdf eval --profile ${SCAP_PROFILE} --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
-        if [ $? -eq 1 ]; then
-            log "OpenSCAP failed. See /root/openscap_report/actions.log" "ERROR"
+        scap_rc=$?
+        if [ "${scap_rc}" -ne 0 ] && [ "${scap_rc}" -ne 2 ]; then
+            log "OpenSCAP exited ${scap_rc}, remediation did not finish. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results without internet"
             oscap xccdf generate guide --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
     fi
+    remove_scap_swap
 
     # Fix firewall cannot load after anssi_bp28_high
     if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then

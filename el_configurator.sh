@@ -136,11 +136,8 @@ NODE_EXPORTER_SKIP_FIREWALL=true # Do not open node_exporter port in firewall fo
 # Left empty, the latest release is resolved from the GitHub API at install time
 NODE_EXPORTER_VERSION=""
 
-# Account the node_exporter service runs as. Either root, or a name created as a system account if
-# it does not already exist. Every collector this script enables works unprivileged, and the ones
-# whose data needs root keep running as root from cron either way, so switching this to prometheus
-# costs only the RAPL power metrics. It is left at root until that has been confirmed on a real
-# machine. See the README for what changes and what is given up.
+# Account the node_exporter service runs as. Either root, or a name created as a system account
+# that will be created. See README for implications. Defaults to root
 #NODE_EXPORTER_USER=prometheus
 NODE_EXPORTER_USER=root
 

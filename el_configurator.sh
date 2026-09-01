@@ -6,7 +6,7 @@
 # Works with Debian 13, scap profiles available since ssg 0.1.80 which ships ssg-debian13-ds.xml
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026081901"
+SCRIPT_BUILD="2026090101"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -134,8 +134,8 @@ NODE_EXPORTER_VERSION=""
 # it does not already exist. Every collector this script enables works unprivileged, so the default
 # is the unprivileged one, and the collectors that gather metrics needing root keep running as root
 # from cron. See the README for what changes and what is given up.
-NODE_EXPORTER_USER=prometheus
-#NODE_EXPORTER_USER=root
+#NODE_EXPORTER_USER=prometheus
+NODE_EXPORTER_USER=root
 
 # Install and configure fail2ban
 CONFIGURE_FAIL2BAN=true

@@ -54,8 +54,9 @@ SCAP_PROFILE=anssi_bp28_high
 # OpenSCAP rules can be memory hungry on debian because it walks the entire filesystem and holds results in memory
 # Add an optional temporary swap file in that case. Set to 0 to disable
 SCAP_SWAP_SIZE_MB=4096
-# Temporary swap file path. Please check that there is enough space
-SCAP_SWAP_FILE=/var/tmp/el_configurator_scap.swap
+# Full path to store the swap file, if left empty, we'll try to find a local filesystem with enough space
+# in /var/tmp /var / /home /srv or /opt
+SCAP_SWAP_FILE=
 
 # Re-eval the scap profile after all custom configs
 RUN_CLOSING_SCAP_SCAN=true
@@ -1738,10 +1739,62 @@ run_closing_scap_scan() {
     return 0
 }
 
+# Path of the swap file this run actually created. remove_scap_swap only ever takes away what
+# add_scap_swap put there, so a probe that landed somewhere unexpected still gets cleaned up.
+SCAP_SWAP_ACTIVE_FILE=""
+
+# Writes, formats and enables one swap file. Any failure takes the file away again, so the caller
+# can move on to the next filesystem without leaving a gigabyte of zeroes behind. Nothing in here
+# logs at ERROR: a filesystem that will not take a swap file is not a failed run, it is a reason to
+# try the next one, and ERROR would mark the whole post install bad.
+make_scap_swap_file() {
+    local file="${1}"
+    local size_mb="${2}"
+    local fstype="${3}"
+
+    # btrfs refuses a swap file that is copy on write, and the attribute can only be set while the
+    # file is empty, so it goes on before anything is written to it
+    if [ "${fstype}" = "btrfs" ]; then
+        : > "${file}" 2>> "${LOG_FILE}"
+        chattr +C "${file}" 2>> "${LOG_FILE}" || log "Cannot mark ${file} as no copy on write, btrfs may refuse it" "NOTICE"
+    fi
+
+    # dd rather than fallocate: a fallocated file has unwritten extents, which carry no block
+    # mapping yet, and the kernel turns those down with "swapfile has holes"
+    if ! dd if=/dev/zero of="${file}" bs=1M count="${size_mb}" status=none 2>> "${LOG_FILE}"; then
+        log "Cannot write ${size_mb}MB to ${file}" "NOTICE"
+        rm -f "${file}" 2>> "${LOG_FILE}"
+        return 1
+    fi
+    # swapon refuses a file anyone else can read, and it would hold memory contents
+    if ! chmod 0600 "${file}" 2>> "${LOG_FILE}"; then
+        log "Cannot set the mode on ${file}" "NOTICE"
+        rm -f "${file}" 2>> "${LOG_FILE}"
+        return 1
+    fi
+    if ! mkswap "${file}" >> "${LOG_FILE}" 2>&1; then
+        log "mkswap failed on ${file}" "NOTICE"
+        rm -f "${file}" 2>> "${LOG_FILE}"
+        return 1
+    fi
+    if ! swapon "${file}" 2>> "${LOG_FILE}"; then
+        log "swapon failed on ${file}" "NOTICE"
+        rm -f "${file}" 2>> "${LOG_FILE}"
+        return 1
+    fi
+    return 0
+}
+
 add_scap_swap() {
     local size_mb="${SCAP_SWAP_SIZE_MB}"
-    local file="${SCAP_SWAP_FILE}"
-    local directory mem_mb swap_mb avail_mb fstype
+    local swap_name="el_configurator_scap.swap"
+    local mem_mb swap_mb dir fstype avail device stale file want line measured ranked seen
+    local -a candidates
+    # Below this a swap file is not worth the minutes spent writing it, and 256MB is left free on
+    # whatever is picked, so that filling a partition is not the price of not being killed
+    local floor_mb=1024
+    local margin_mb=256
+    local min_mb
 
     case "${size_mb}" in
         ''|0) return 0 ;;
@@ -1750,10 +1803,6 @@ add_scap_swap() {
             return 1
             ;;
     esac
-    if [ -z "${file}" ]; then
-        log "SCAP_SWAP_FILE is empty, cannot add swap for the OpenSCAP run" "ERROR"
-        return 1
-    fi
 
     mem_mb=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
     swap_mb=$(awk '/^SwapTotal:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)
@@ -1767,65 +1816,120 @@ add_scap_swap() {
         return 0
     fi
 
-    # A file left behind by a run that was interrupted, rather than one this run made
-    if [ -e "${file}" ]; then
-        swapoff "${file}" > /dev/null 2>&1
-        rm -f "${file}" 2>> "${LOG_FILE}"
+    # The floor guards a swap file that had to be cut down to fit. A SCAP_SWAP_SIZE_MB smaller than
+    # the floor was asked for as it stands, and is honoured however small it is.
+    min_mb="${floor_mb}"
+    [ "${size_mb}" -lt "${min_mb}" ] && min_mb="${size_mb}"
+
+    if [ -n "${SCAP_SWAP_FILE}" ]; then
+        # An explicit path pins the swap file and nothing is probed. It still gets measured, so a
+        # path on a partition too small to hold it is reported rather than half written.
+        dir=$(dirname "${SCAP_SWAP_FILE}")
+        swap_name=$(basename "${SCAP_SWAP_FILE}")
+        mkdir -p "${dir}" 2>> "${LOG_FILE}" || {
+            log "Cannot create ${dir} for the temporary swap file" "ERROR"
+            return 1
+        }
+        candidates=("${dir}")
+    else
+        # /var/tmp is a partition of its own on an ANSSI layout and is frequently the smallest thing
+        # on the machine, so it is one candidate among several rather than the place this always
+        # goes. /tmp is deliberately absent: it is tmpfs as often as not, and what is left of it is
+        # cleaned out from under long running processes.
+        candidates=(/var/tmp /var / /home /srv /opt)
     fi
 
-    directory=$(dirname "${file}")
-    mkdir -p "${directory}" 2>> "${LOG_FILE}" || {
-        log "Cannot create ${directory} for the temporary swap file" "ERROR"
-        return 1
-    }
-    avail_mb=$(df -Pm "${directory}" 2>/dev/null | awk 'NR == 2 {print $4}')
-    if [ -n "${avail_mb}" ] && [ "${avail_mb}" -lt "$((size_mb + 256))" ]; then
-        log "Only ${avail_mb}MB free on ${directory}, not enough for a ${size_mb}MB swap file. Set SCAP_SWAP_FILE to a filesystem with room" "ERROR"
+    # A file left behind by an interrupted run would also make its filesystem look full, so it goes
+    # before anything is measured rather than after a candidate has been passed over
+    for dir in "${candidates[@]}"; do
+        stale="${dir}/${swap_name}"
+        if [ -e "${stale}" ]; then
+            swapoff "${stale}" > /dev/null 2>&1
+            rm -f "${stale}" 2>> "${LOG_FILE}"
+        fi
+    done
+
+    measured=""
+    seen=""
+    for dir in "${candidates[@]}"; do
+        [ -d "${dir}" ] || continue
+        # access(2) reports EROFS for root as well, so this turns down a read only mount
+        [ -w "${dir}" ] || continue
+
+        # One df call, because -T shifts the columns: $1 device, $2 type, $5 available in MB
+        line=$(df -PTm "${dir}" 2>/dev/null | awk 'NR == 2 {print $2, $5, $1}')
+        IFS=' ' read -r fstype avail device <<< "${line}"
+
+        # A swap file needs the filesystem to map its blocks, either through its own swap_activate
+        # or through bmap. Everything below has neither, is a network filesystem, or has no business
+        # holding one, and the kernel would turn it down with "swapfile has holes".
+        case "${fstype}" in
+            ''|tmpfs|ramfs|devtmpfs|overlay|overlayfs|squashfs|iso9660|autofs|nfs|nfs4|cifs|smbfs|smb3|fuse|fuse.*|fuseblk|zfs|vfat|exfat|msdos)
+                continue
+                ;;
+        esac
+        case "${avail}" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        [ "${avail}" -lt "$((min_mb + margin_mb))" ] && continue
+
+        # /var and /var/tmp are usually the same filesystem, and so are / and /home. Measuring one
+        # twice would have it beaten by itself and the second copy is never reached anyway.
+        case " ${seen} " in
+            *" ${device} "*) continue ;;
+        esac
+        seen="${seen} ${device}"
+
+        measured="${measured}${avail} ${fstype} ${dir}
+"
+    done
+
+    if [ -z "${measured}" ]; then
+        log "No filesystem among ${candidates[*]} can hold a temporary swap file of at least ${min_mb}MB. Set SCAP_SWAP_FILE to one that can" "ERROR"
         return 1
     fi
 
-    log "Adding ${size_mb}MB of temporary swap at ${file} for the OpenSCAP run"
+    # Most room first, so the run gets the largest swap the machine can spare
+    ranked=$(printf '%s' "${measured}" | sort -rn)
 
-    # btrfs refuses a swap file that is copy on write, and the attribute can only be set while the
-    # file is empty, so it goes on before anything is written to it
-    fstype=$(df -PT "${directory}" 2>/dev/null | awk 'NR == 2 {print $2}')
-    if [ "${fstype}" = "btrfs" ]; then
-        : > "${file}" 2>> "${LOG_FILE}"
-        chattr +C "${file}" 2>> "${LOG_FILE}" || log "Cannot mark ${file} as no copy on write, btrfs may refuse it" "NOTICE"
-    fi
+    # read rather than trimming the string by hand, so that the last field keeps the rest of the
+    # line: an explicit SCAP_SWAP_FILE may sit in a directory whose name has a space in it
+    while IFS=' ' read -r avail fstype dir; do
+        [ -z "${avail}" ] && continue
+        file="${dir}/${swap_name}"
 
-    # dd rather than fallocate: a fallocated file has unwritten extents, and swapon refuses those on
-    # XFS, which is what RHEL installs by default
-    if ! dd if=/dev/zero of="${file}" bs=1M count="${size_mb}" status=none 2>> "${LOG_FILE}"; then
-        log "Cannot write the temporary swap file ${file}" "ERROR"
-        rm -f "${file}"
-        return 1
-    fi
-    # swapon refuses a file anyone else can read, and it would hold memory contents
-    chmod 0600 "${file}" 2>> "${LOG_FILE}" || {
-        log "Cannot set the mode on ${file}" "ERROR"
-        rm -f "${file}"
-        return 1
-    }
-    if ! mkswap "${file}" >> "${LOG_FILE}" 2>&1; then
-        log "mkswap failed on ${file}" "ERROR"
-        rm -f "${file}"
-        return 1
-    fi
-    if ! swapon "${file}" 2>> "${LOG_FILE}"; then
-        log "swapon failed on ${file}" "ERROR"
-        rm -f "${file}"
-        return 1
-    fi
-    return 0
+        want="${size_mb}"
+        if [ "$((avail - margin_mb))" -lt "${want}" ]; then
+            want=$((avail - margin_mb))
+        fi
+        [ "${want}" -lt "${min_mb}" ] && continue
+
+        if [ "${want}" -lt "${size_mb}" ]; then
+            log "Adding ${want}MB of temporary swap at ${file} for the OpenSCAP run, reduced from ${size_mb}MB because ${dir} has ${avail}MB free"
+        else
+            log "Adding ${want}MB of temporary swap at ${file} for the OpenSCAP run"
+        fi
+
+        if make_scap_swap_file "${file}" "${want}" "${fstype}"; then
+            SCAP_SWAP_ACTIVE_FILE="${file}"
+            return 0
+        fi
+        log "${dir} would not take a swap file, trying the next filesystem" "NOTICE"
+    done <<< "${ranked}"
+
+    log "No filesystem would take a temporary swap file for the OpenSCAP run" "ERROR"
+    return 1
 }
 
 # Takes the temporary swap away again. Only ever touches the file add_scap_swap made.
 remove_scap_swap() {
-    local file="${SCAP_SWAP_FILE}"
+    local file="${SCAP_SWAP_ACTIVE_FILE}"
 
     [ -z "${file}" ] && return 0
-    [ -e "${file}" ] || return 0
+    if [ ! -e "${file}" ]; then
+        SCAP_SWAP_ACTIVE_FILE=""
+        return 0
+    fi
 
     if ! swapoff "${file}" 2>> "${LOG_FILE}"; then
         log "Cannot swapoff ${file}, leaving it in place rather than pulling it from under the system" "ERROR"
@@ -1835,7 +1939,8 @@ remove_scap_swap() {
         log "Cannot remove ${file}" "ERROR"
         return 1
     }
-    log "Removed the temporary swap file"
+    SCAP_SWAP_ACTIVE_FILE=""
+    log "Removed the temporary swap file ${file}"
     return 0
 }
 

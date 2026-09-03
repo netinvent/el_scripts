@@ -581,10 +581,17 @@ install_ssg_debian_packages() {
         return 1
     fi
 
-    ssg_dir=$(mktemp -d) || {
-        log "Cannot create temporary directory for ssg packages" "ERROR"
-        return 1
-    }
+    if [ ! -d /opt/ssg ]; then
+        log "Creating /opt/ssg for SCAP content"
+        mkdir -p /opt/ssg 2>> "${LOG_FILE}" || {
+            log "Cannot create /opt/ssg for SCAP content" "ERROR"
+            return 1
+        }
+    else
+        log "Using existing /opt/ssg for SCAP content"
+        ssg_dir="/opt/ssg"
+    fi
+
     printf '%s\n' "${SSG_DEBIAN_PACKAGES}" > "${ssg_dir}/SHA256SUMS"
 
     package_files=""

@@ -1728,8 +1728,13 @@ run_closing_scap_scan() {
     report="/root/openscap_report/${SCAP_PROFILE}_verification_$(date '+%Y-%m-%d_%H%M%S').html"
 
     log "Verifying this machine against ${SCAP_PROFILE}, without remediating"
-    oscap xccdf eval --profile "${SCAP_PROFILE}" --report "${report}" "${SSG_DATASTREAM}" \
-        > "${scan_output}" 2>> "${LOG_FILE}"
+    if [ "${SCAP_FETCH_REMOTE_RESOURCES}" = true ]; then
+        oscap xccdf eval --profile "${SCAP_PROFILE}" --report "${report}" --fetch-remote-resources "${SSG_DATASTREAM}" \
+            > "${scan_output}" 2>> "${LOG_FILE}"
+    else
+        oscap xccdf eval --profile "${SCAP_PROFILE}" --report "${report}" "${SSG_DATASTREAM}" \
+            > "${scan_output}" 2>> "${LOG_FILE}"
+    fi
     rc=$?
     # 0 is every rule passed and 2 is at least one did not. Anything else is oscap itself failing,
     # which is worth an ERROR because it means this check produced no answer at all.
@@ -2026,6 +2031,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
             oscap xccdf generate guide --fetch-remote-resources --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
+        SCAP_FETCH_REMOTE_RESOURCES=true
     else
         add_scap_swap || log "Continuing without the temporary swap, oscap may be killed on a small machine" "ERROR"
         log "Setting up scap profile ${SCAP_PROFILE} without internet"
@@ -2038,6 +2044,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
             oscap xccdf generate guide --profile ${SCAP_PROFILE} "${SSG_DATASTREAM}" > "/root/openscap_report/${SCAP_PROFILE}_guide_$(date '+%Y-%m-%d').html" 2>> "${LOG_FILE}"
             [ $? -ne 0 ] && log "OpenSCAP results failed. See log file" "ERROR"
         fi
+        SCAP_FETCH_REMOTE_RESOURCES=true
     fi
     remove_scap_swap
 

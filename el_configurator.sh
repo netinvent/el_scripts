@@ -1702,7 +1702,7 @@ prepare_node_exporter_textfile_dir() {
 run_closing_scap_scan() {
     local report scan_output rc passed failed other
 
-    if ! is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then
+    if is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then
         return 0
     fi
     if [ -z "${SCAP_PROFILE}" ] || [ "${SCAP_PROFILE}" = false ]; then
@@ -1751,6 +1751,7 @@ run_closing_scap_scan() {
     rm -f "${scan_output}"
 
     log "Verification scan: ${passed} passed, ${failed} failed, ${other} neither. Report at ${report}"
+    remove_scap_swap
     return 0
 }
 
@@ -2046,7 +2047,9 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         fi
         SCAP_FETCH_REMOTE_RESOURCES=true
     fi
-    remove_scap_swap
+    if ! is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then
+        remove_scap_swap
+    fi
 
     # Fix firewall cannot load after anssi_bp28_high
     if [ "${SCAP_PROFILE}" = "anssi_bp28_high" ] && [ "${FLAVOR}" = "rhel" ]; then

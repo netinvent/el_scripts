@@ -53,7 +53,7 @@ SCAP_PROFILE=anssi_bp28_high
 
 # OpenSCAP rules can be memory hungry on debian because it walks the entire filesystem and holds results in memory
 # Add an optional temporary swap file in that case. Set to 0 to disable
-SCAP_SWAP_SIZE_MB=4096
+SCAP_SWAP_SIZE_MB=8192
 # Full path to store the swap file, if left empty, we'll try to find a local filesystem with enough space
 # in /var/tmp /var / /home /srv or /opt
 SCAP_SWAP_FILE=
@@ -1825,10 +1825,11 @@ add_scap_swap() {
     [ -z "${mem_mb}" ] && mem_mb=0
     [ -z "${swap_mb}" ] && swap_mb=0
 
+    log "Machine has ${mem_mb}MB memory and ${swap_mb}MB swap"
     # 8192 is not a measurement, it is a line drawn above the 4 GB machine this was reported on.
     # A machine already past it is left alone, so this costs nothing on anything reasonably sized.
-    if [ "$((mem_mb + swap_mb))" -ge 8192 ]; then
-        log "Machine has ${mem_mb}MB memory and ${swap_mb}MB swap, no temporary swap needed for OpenSCAP"
+    if [ "$((mem_mb + swap_mb))" -ge 10240 ]; then
+        log "No temporary swap needed for OpenSCAP"
         return 0
     fi
 

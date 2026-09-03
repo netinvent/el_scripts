@@ -375,6 +375,9 @@ get_el_version() {
             else
                 log_quit "Not compatible with ${DIST} release ${RELEASE} "
             fi
+        elif grep 'ID_LIKE="*suse*' /etc/os-release > /dev/null; then
+            FLAVOR=suse
+            log_quit "We do not yet support Suse."
         else
             log_quit "Cannot determine OS flavor from /etc/os-release"
         fi

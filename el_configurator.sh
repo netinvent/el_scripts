@@ -71,10 +71,10 @@ RUN_CLOSING_SCAP_SCAN=true
 # https://packages.debian.org/sid/all/<package>/download
 SSG_DEBIAN_POOL_URL="https://deb.debian.org/debian/pool/main/s/scap-security-guide"
 SSG_DEBIAN_PACKAGES=$(cat << 'EOF'
-fdb92f480cd782fde407123bd3d20860d9d4e26faa21eca738cb7cf78ebf6204  ssg-base_0.1.80-1_all.deb
-aa72d05f04dd9a5f5da961a255ed643aa6b08c07f17579a7091d19ae3e2b931c  ssg-debian_0.1.80-1_all.deb
-735682488025215454e3e82ab9a6f2965d1c1e5bd5ed64219a1fdfc71617facd  ssg-applications_0.1.80-1_all.deb
-a8e4e4424364b1caae12a2a9ae412bea3f79493c2ec1d2ebaa5f8e92f53d8cda  ssg-debderived_0.1.80-1_all.deb
+9d38443eace83def86b6e9c487c6973c4fa08a514094f511afdcfd5242f06a6b  ssg-base_0.1.82-1_all.deb
+cfde145916f1f37ec96c0fe2a9ea5f44a2db0ee6f0a2dacfcf86534c0977755a  ssg-debian_0.1.82-1_all.deb
+3ea78865be868d26d0c0bb88c27044b2fd3837225bc2e56d80ccfea7ba531fbc  ssg-applications_0.1.82-1_all.deb
+cf768175b58a48593d20660c93ed8b4e966593ec687a82468e2f1482f21a3a15  ssg-debderived_0.1.82-1_all.deb
 EOF
 )
 
@@ -583,16 +583,17 @@ install_ssg_debian_packages() {
         log "No ssg packages are pinned, cannot install SCAP content" "ERROR"
         return 1
     fi
+	
+    ssg_dir="/opt/ssg"
 
-    if [ ! -d /opt/ssg ]; then
-        log "Creating /opt/ssg for SCAP content"
-        mkdir -p /opt/ssg 2>> "${LOG_FILE}" || {
-            log "Cannot create /opt/ssg for SCAP content" "ERROR"
+    if [ ! -d "${ssg_dir}" ]; then
+        log "Creating ${ssg_dir} for SCAP content"
+        mkdir -p "${ssg_dir}" 2>> "${LOG_FILE}" || {
+            log "Cannot create ${ssg_dir} for SCAP content" "ERROR"
             return 1
         }
     else
-        log "Using existing /opt/ssg for SCAP content"
-        ssg_dir="/opt/ssg"
+        log "Using existing ${ssg_dir} for SCAP content"
     fi
 
     printf '%s\n' "${SSG_DEBIAN_PACKAGES}" > "${ssg_dir}/SHA256SUMS"

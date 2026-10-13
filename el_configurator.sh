@@ -164,7 +164,10 @@ ALLOW_UNPROTECTED_FS_SYMLINKS=false
 # This is not an ideal fix from a security perspective
 DISABLE_APPARMOR_RUNC_PROFILE=true
 
-VM_SWAPPINESS_VALUE=1 # Set vm.swappiness value to this
+ # Reducing swappiness to strict minimum in order improve latency on memory intensive workloads,
+ # as well as reducing SSD wear
+ # Still, when memory usage grows very fast, we may hit OOM situations
+VM_SWAPPINESS_VALUE=1
 
 # Maximum disk space the persistent journal may use, for example 2G, 500M, or a percentage of the
 # filesystem such as 10%. Empty disables the limit and leaves system defaults

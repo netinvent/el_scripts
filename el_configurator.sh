@@ -6,7 +6,7 @@
 # Works with Debian 13, scap profiles available since ssg 0.1.80 which ships ssg-debian13-ds.xml
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026090101"
+SCRIPT_BUILD="2026101301"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -14,7 +14,7 @@ SCRIPT_BUILD="2026090101"
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # String that will be searched in SMBIOS to detect virtual machines
 ISSUE_MESSAGE_EXTRA="- Private System" # Will be displayed with BRAND_NAME in /etc/issue.net
-BRAND_VER=5.1
+BRAND_VER=5.
 
 REMOTE_LOGIN_BANNER=$(cat << 'EOF'
  ___________________________________________________
@@ -2021,12 +2021,16 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         #DEBIAN_12_SKIP_RULES="--skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions
         #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         
+        # Let's use as much swap as we can for oscap runs
+        sysctl -w vm.swappiness=99 2>> "${LOG_FILE}" || log "Failed to set vm.swappiness to 99 at runtime for oscap" "ERROR"
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
         scap_rc=$?
         # 0 is a clean run and 2 is "some rule failed", which is normal here. Anything else means
         # oscap did not finish: a machine short of memory has it killed partway through remediation,
         # and 137 is not 1, so testing for 1 alone reported that as a success and carried on.
-        if [ "${scap_rc}" -ne 0 ] && [ "${scap_rc}" -ne 2 ]; then
+        if [ "${scap_rc}" -eq 137]; then
+            log "OpenSCAP received a SIGKILL and exited with code ${scap_rc}, perhaps from OOM" "ERROR" 
+        elif [ "${scap_rc}" -ne 0 ] && [ "${scap_rc}" -ne 2 ]; then
             log "OpenSCAP exited ${scap_rc}, remediation did not finish. See /root/openscap_report/actions.log" "ERROR"
         else
             log "Generating scap results with remote resources"

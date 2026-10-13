@@ -2021,7 +2021,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         # In that case, one can exclude the specific rules that are causing the issue until a stable SSG gets released
         #DEBIAN_12_SKIP_RULES="--skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_sticky_bits --skip-rule xccdf_org.ssgproject.content_rule_dir_perms_world_writable_root_owned --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_unauthorized_world_writable --skip-rule xccdf_org.ssgproject.content_rule_file_permissions_ungroupowned --skip-rule xccdf_org.ssgproject.content_rule_no_files_unowned_by_user --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_groupownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_ownership --skip-rule xccdf_org.ssgproject.content_rule_accounts_users_home_files_permissions
         #oscap xccdf eval --profile ${SCAP_PROFILE} ${DEBIAN_12_SKIP_RULES} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1
-        
+
         # Let's use as much swap as we can for oscap runs
         sysctl -w vm.swappiness=99 2>> "${LOG_FILE}" || log "Failed to set vm.swappiness to 99 at runtime for oscap" "ERROR"
         oscap xccdf eval --profile ${SCAP_PROFILE} --fetch-remote-resources --report "/root/openscap_report/${SCAP_PROFILE}_report_$(date '+%Y-%m-%d').html" --remediate "${SSG_DATASTREAM}" > /root/openscap_report/actions.log 2>&1

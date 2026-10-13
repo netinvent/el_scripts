@@ -2029,7 +2029,7 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
         # 0 is a clean run and 2 is "some rule failed", which is normal here. Anything else means
         # oscap did not finish: a machine short of memory has it killed partway through remediation,
         # and 137 is not 1, so testing for 1 alone reported that as a success and carried on.
-        if [ "${scap_rc}" -eq 137]; then
+        if [ "${scap_rc}" -eq 137 ]; then
             log "OpenSCAP received a SIGKILL and exited with code ${scap_rc}, perhaps from OOM" "ERROR" 
         elif [ "${scap_rc}" -ne 0 ] && [ "${scap_rc}" -ne 2 ]; then
             log "OpenSCAP exited ${scap_rc}, remediation did not finish. See /root/openscap_report/actions.log" "ERROR"

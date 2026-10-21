@@ -349,9 +349,24 @@ else
     fail "an empty dmidecode read logs an ERROR" "IS_VIRTUAL=${IS_VIRTUAL} errors=${LOGGED_ERRORS}"
 fi
 
-mv "${BIN}/dmidecode" "${WORK}/dmidecode.hidden"
+# Moving the stub aside is not enough where a real dmidecode is installed, as on the GitHub runner
+# or a Fedora host: type -p finds that one further down PATH, and run as a normal user it still
+# prints its version header, so the read is not even empty. So this case runs with a PATH that
+# holds the stubs and the few tools the function pipes through, and no dmidecode at all.
+NO_DMI_BIN="${WORK}/bin_without_dmidecode"
+mkdir -p "${NO_DMI_BIN}"
+for cmd in lsmod dnf apt apt-get; do
+    cp "${BIN}/${cmd}" "${NO_DMI_BIN}/${cmd}"
+    chmod +x "${NO_DMI_BIN}/${cmd}"
+done
+for cmd in awk cat grep rm; do
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "${cmd}")" > "${NO_DMI_BIN}/${cmd}"
+    chmod +x "${NO_DMI_BIN}/${cmd}"
+done
+saved_path="${PATH}"
+PATH="${NO_DMI_BIN}"
 run_detect lsmod_physical.txt dmi_physical.txt
-mv "${WORK}/dmidecode.hidden" "${BIN}/dmidecode"
+PATH="${saved_path}"
 if [ "${IS_VIRTUAL}" = false ] && [ "${LOGGED_ERRORS}" -ge 1 ]; then
     pass "a missing dmidecode logs an ERROR and falls back to physical"
 else

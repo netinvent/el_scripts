@@ -456,21 +456,50 @@ if [ "${on_count}" -eq 2 ]; then
 else
     fail "swap is added on both paths" "found ${on_count}"
 fi
-if [ "${off_count}" -eq 1 ]; then
-    pass "and taken away once, after both of them"
+# The closing scan walks the same filesystem as the remediation, so with RUN_CLOSING_SCAP_SCAN on
+# the swap is kept for it and run_closing_scap_scan takes it away. With the flag off the remediation
+# block takes it away itself. That makes two removals, one for each setting of the flag.
+if [ "${off_count}" -eq 2 ]; then
+    pass "and taken away in two places, one for each setting of RUN_CLOSING_SCAP_SCAN"
 else
-    fail "and taken away once, after both of them" "found ${off_count}"
+    fail "and taken away in two places" "found ${off_count}, expected 2"
 fi
 
 first_on=$(printf '%s\n' "${code_only}" | grep -nE '^ +add_scap_swap' | head -1 | cut -d: -f1)
 eval_at=$(printf '%s\n' "${code_only}" | grep -n 'oscap xccdf eval.*--remediate' | head -1 | cut -d: -f1)
-off_at=$(printf '%s\n' "${code_only}" | grep -n '^ *remove_scap_swap$' | head -1 | cut -d: -f1)
+# run_closing_scap_scan is defined above the remediation block, so its removal comes first in the
+# file. The one that belongs to the remediation is the first one after it
+off_at=$(printf '%s\n' "${code_only}" | grep -n '^ *remove_scap_swap$' | cut -d: -f1 \
+    | awk -v e="${eval_at:-0}" '$1 > e {print; exit}')
 if [ -n "${first_on}" ] && [ -n "${eval_at}" ] && [ -n "${off_at}" ] \
    && [ "${first_on}" -lt "${eval_at}" ] && [ "${eval_at}" -lt "${off_at}" ]; then
     pass "on before the remediation, off after it"
 else
     fail "on before the remediation, off after it" \
          "on ${first_on:-missing}, eval ${eval_at:-missing}, off ${off_at:-missing}"
+fi
+
+# Unguarded, that removal would pull the swap from under the closing scan
+guard=""
+[ -n "${off_at}" ] && guard=$(printf '%s\n' "${code_only}" | sed -n "$((off_at - 1))p")
+# The pattern is a literal line of el_configurator.sh, so its ${...} must not expand
+# shellcheck disable=SC2016
+case "${guard}" in
+    *'if ! is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then'*)
+        pass "the remediation only takes it away when no closing scan follows" ;;
+    *)
+        fail "the remediation only takes it away when no closing scan follows" "${guard:-no removal found}" ;;
+esac
+
+closing_body=$(printf '%s\n' "${code_only}" \
+    | awk 'index($0, "run_closing_scap_scan() {") == 1 {f = 1} f {print} f && /^\}$/ {exit}')
+closing_eval=$(printf '%s\n' "${closing_body}" | grep -n 'oscap xccdf eval' | head -1 | cut -d: -f1)
+closing_off=$(printf '%s\n' "${closing_body}" | grep -n '^ *remove_scap_swap$' | head -1 | cut -d: -f1)
+if [ -n "${closing_eval}" ] && [ -n "${closing_off}" ] && [ "${closing_eval}" -lt "${closing_off}" ]; then
+    pass "otherwise the closing scan takes it away, after its own eval"
+else
+    fail "otherwise the closing scan takes it away, after its own eval" \
+         "eval ${closing_eval:-missing}, off ${closing_off:-missing}"
 fi
 
 # Adding it to fstab would make it permanent, which is the opposite of what this is for

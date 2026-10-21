@@ -8,11 +8,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run tests
+        # The runner starts steps with SIGPIPE ignored. A printf piped into a grep -q that stops at
+        # an early match then gets EPIPE and prints "write error: Broken pipe" instead of dying
+        # quietly as it does in a terminal. Each test gets the default SIGPIPE back.
         run: |
           status=0
           for test in tests/test_*.sh; do
             echo "::group::${test}"
-            bash "${test}" || status=1
+            env --default-signal=PIPE bash "${test}" || status=1
             echo "::endgroup::"
           done
           exit "${status}"

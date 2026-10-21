@@ -6,7 +6,7 @@
 # Works with Debian 13, scap profiles available since ssg 0.1.80 which ships ssg-debian13-ds.xml
 # Works with Ubuntu 22.04 tls, although scap support needs to be disabled as of 16-12-2025
 
-SCRIPT_BUILD="2026101301"
+SCRIPT_BUILD="2026102001"
 
 # Note that all variables can be overridden by kernel arguments
 # Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
@@ -14,7 +14,7 @@ SCRIPT_BUILD="2026101301"
 BRAND_NAME=NetPerfect # Name which will be displayed in /etc/issue
 VIRT_BRAND_NAME=NetPerfect # String that will be searched in SMBIOS to detect virtual machines
 ISSUE_MESSAGE_EXTRA="- Private System" # Will be displayed with BRAND_NAME in /etc/issue.net
-BRAND_VER=5.
+BRAND_VER=5.2
 
 REMOTE_LOGIN_BANNER=$(cat << 'EOF'
  ___________________________________________________

@@ -196,7 +196,22 @@ before_hash=$(sha256sum "${SUDOERS}" | cut -d' ' -f1)
 # Hide the stub so the helper sees a system without visudo
 saved_visudo=$(declare -f visudo)
 unset -f visudo
-if sudoers_begin_edit "${SUDOERS}" || [ "${LOGGED_ERRORS}" -lt 1 ]; then
+# Unsetting the stub is not enough where sudo is installed, as on the GitHub runner or a Fedora
+# host: type finds the real visudo further down PATH. So the helper runs with a PATH that holds only
+# the commands it uses past its visudo check. Those have to stay reachable, or a helper that lost
+# the check would still fail on them and pass this test for the wrong reason.
+NO_VISUDO_BIN="${WORK}/bin_without_visudo"
+mkdir -p "${NO_VISUDO_BIN}"
+for cmd in cat mktemp rm; do
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "${cmd}")" > "${NO_VISUDO_BIN}/${cmd}"
+    chmod +x "${NO_VISUDO_BIN}/${cmd}"
+done
+saved_path="${PATH}"
+PATH="${NO_VISUDO_BIN}"
+sudoers_begin_edit "${SUDOERS}"
+begin_rc=$?
+PATH="${saved_path}"
+if [ "${begin_rc}" -eq 0 ] || [ "${LOGGED_ERRORS}" -lt 1 ]; then
     fail "without visudo the helper refuses to edit"
 else
     pass "without visudo the helper refuses to edit"

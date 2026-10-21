@@ -28,7 +28,9 @@ extract_function() {
         exit 2
     fi
     last=$(awk -v s="${first}" 'NR>=s && /^\}$/ {print NR; exit}' "${SCRIPT}")
-    sed -n "${first},${last}p" "${SCRIPT}" >> "${HELPERS}"
+    # The packages are downloaded to /opt/ssg, which only root can create. They go to the work
+    # directory instead, so the suite runs as a normal user, the GitHub runner included
+    sed -n "${first},${last}p" "${SCRIPT}" | sed "s#/opt/ssg#${WORK}/opt/ssg#g" >> "${HELPERS}"
     echo "${first}-${last}"
 }
 

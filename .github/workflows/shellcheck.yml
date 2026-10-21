@@ -9,11 +9,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
-        # SC2068 (error): Double quote array expansions to avoid re-splitting elements. [SC2068]
         # SC2181 (note): Check exit code directly with e.g. 'if ! mycmd;', not indirectly with $?.
+        #   Kept, it is a house style rather than a defect.
         # SC1091 (note): Not following: [FILEPATH] was not specified as input (see shellcheck -x).
-        #  We don't want to follow the optional config files here
+        #   Kept, we don't want to follow the optional config files here.
+        #
+        # SC2068 (error): Double quote array expansions to avoid re-splitting elements.
+        #   No longer suppressed. It had been hiding something real: check_internet held its host
+        #   lists as plain strings and read them as "${var[@]}", which iterated only because the
+        #   unquoted expansion word-split on the spaces. Those are real arrays now, expanded quoted,
+        #   so the check earns its keep again and a genuine array bug added later gets caught.
         env:
-          SHELLCHECK_OPTS: -e SC2181 -e SC2068 -e SC1091
+          SHELLCHECK_OPTS: -e SC2181 -e SC1091
         #with:
           #scandir: './kickstart_source_script'

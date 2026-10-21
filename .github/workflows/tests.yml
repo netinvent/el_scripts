@@ -1,0 +1,28 @@
+name: Tests
+on: [push, pull_request]
+
+jobs:
+  bash-unit-tests:
+    name: Bash unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          status=0
+          for test in tests/test_*.sh; do
+            echo "::group::${test}"
+            bash "${test}" || status=1
+            echo "::endgroup::"
+          done
+          exit "${status}"
+
+  kickstart-up-to-date:
+    name: Kickstart matches the scripts it embeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The pre-commit hook keeps this in step locally, but a hook can be skipped with --no-verify
+      # or simply never installed, so the guarantee has to be enforced here as well
+      - name: Check ks.el9-10.cfg is regenerated
+        run: bash kickstart_source_script/generate_kickstart.sh --check

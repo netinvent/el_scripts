@@ -1706,7 +1706,7 @@ prepare_node_exporter_textfile_dir() {
 run_closing_scap_scan() {
     local report scan_output rc passed failed other
 
-    if is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then
+    if ! is_enabled "${RUN_CLOSING_SCAP_SCAN}"; then
         return 0
     fi
     if [ -z "${SCAP_PROFILE}" ] || [ "${SCAP_PROFILE}" = false ]; then

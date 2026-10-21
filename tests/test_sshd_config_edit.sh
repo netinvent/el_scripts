@@ -229,7 +229,22 @@ fi
 reset_dropin ""
 saved_sshd=$(declare -f sshd)
 unset -f sshd
-if sshd_begin_edit "${DROPIN}" || [ "${LOGGED_ERRORS}" -lt 1 ]; then
+# Unsetting the stub is not enough where a real sshd is installed, as on the GitHub runner or a
+# Fedora host: type finds that one further down PATH. So the helper runs with a PATH that holds only
+# the commands it uses past its sshd check. Those have to stay reachable, or a helper that lost the
+# check would still fail on them and pass this test for the wrong reason.
+NO_SSHD_BIN="${WORK}/bin_without_sshd"
+mkdir -p "${NO_SSHD_BIN}"
+for cmd in cat dirname mktemp rm; do
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "${cmd}")" > "${NO_SSHD_BIN}/${cmd}"
+    chmod +x "${NO_SSHD_BIN}/${cmd}"
+done
+saved_path="${PATH}"
+PATH="${NO_SSHD_BIN}"
+sshd_begin_edit "${DROPIN}"
+begin_rc=$?
+PATH="${saved_path}"
+if [ "${begin_rc}" -eq 0 ] || [ "${LOGGED_ERRORS}" -lt 1 ]; then
     fail "without sshd installed the helper refuses to edit"
 else
     pass "without sshd installed the helper refuses to edit"

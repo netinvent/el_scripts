@@ -21,5 +21,7 @@ jobs:
         #   so the check earns its keep again and a genuine array bug added later gets caught.
         env:
           SHELLCHECK_OPTS: -e SC2181 -e SC1091
-        #with:
+        # The unit tests in tests/ are left out of this check
+        with:
+          ignore_paths: tests
           #scandir: './kickstart_source_script'

@@ -4973,7 +4973,7 @@ done
 
 # This covers bash, sh, ksh and zsh on EL
 # On debian, sh doesn't read /etc/profile.d, and we don't want to tamper with other files
-# to prevent questions at each apt invocation
+# to prevent questions at each apt invocation. /etc/bash.bashrc, below, is the one exception
 log "Configuring the interactive shell timeout in /etc/profile.d/tmout.sh"
 cat << 'EOF' > /etc/profile.d/tmout.sh
 # Written by el_configurator. Interactive shells idle out after 600 seconds of inactivity.
@@ -4985,6 +4985,25 @@ if ( TMOUT=600 ) 2>/dev/null; then
 fi
 EOF
 [ $? -ne 0 ] && log "Failed to create /etc/profile.d/tmout.sh" "ERROR"
+
+# Plain su, sudo su and sudo -s start a non-login interactive bash. On Debian and Ubuntu that shell
+# reads /etc/bash.bashrc and ~/.bashrc, never /etc/profile.d, so su left TMOUT unset, or set but no
+# longer readonly when the caller had exported it. EL needs nothing: its /etc/bashrc already reads
+# /etc/profile.d/*.sh for non-login shells.
+# The hook goes at the end, after the file's own return for non-interactive shells, so scripts are
+# not affected. A login shell now reads tmout.sh twice, since Debian's /etc/profile reads
+# /etc/bash.bashrc before /etc/profile.d, and the guard inside tmout.sh keeps that silent.
+# /etc/bash.bashrc is a conffile of the bash package, so dpkg asks about it when a bash update ships
+# a new one, as it does for /etc/login.defs and /etc/issue which this script edits too.
+if [ "${FLAVOR}" = "debian" ]; then
+    TMOUT_HOOK='[ -r /etc/profile.d/tmout.sh ] && . /etc/profile.d/tmout.sh'
+    if ! grep -qxF "${TMOUT_HOOK}" /etc/bash.bashrc 2>> "${LOG_FILE}"; then
+        log "Making the non-login bash shells started by su read /etc/profile.d/tmout.sh"
+        # The leading newline keeps the hook off the last line of a file that lacks a final newline
+        printf '\n# Added by el_configurator: plain su starts a shell that never reads /etc/profile.d\n%s\n' "${TMOUT_HOOK}" \
+            >> /etc/bash.bashrc 2>> "${LOG_FILE}" || log "Failed to add the shell timeout to /etc/bash.bashrc" "ERROR"
+    fi
+fi
 
 # This covers tcsh and csh on EL and debian
 if [ "${FLAVOR}" = "rhel" ]; then

@@ -70,9 +70,11 @@ if [ ! -s "${SH}" ]; then
     exit 2
 fi
 
-# Run the extracted file the way a login shell would: $0 is -bash, and nothing else is read
+# Run the extracted file the way a login shell would: $0 is -bash, and nothing else is read.
+# LC_ALL=C because the checks below look for bash's English "readonly variable", and a French bash
+# says "variable en lecture seule", which would let the error through unseen
 as_login_shell() {
-    bash -c 'exec -a "-bash" bash --norc --noprofile -c "$1"' _ "${1}" 2>&1
+    LC_ALL=C bash -c 'exec -a "-bash" bash --norc --noprofile -c "$1"' _ "${1}" 2>&1
 }
 
 echo "Testing the generated shell timeout scripts from [${SCRIPT}]"
@@ -218,6 +220,84 @@ if printf '%s\n' "${code_only}" | grep -qE '> /etc/profile\.d/tmout\.sh'; then
     pass "the sh file keeps its own name, distinct from the csh one"
 else
     fail "the sh file keeps its own name" "$(grep -n 'tmout' "${SCRIPT}")"
+fi
+
+echo
+echo "== plain su gets the timeout too, on Debian =="
+
+# su, sudo su and sudo -s start a non-login interactive bash. On Debian that shell reads
+# /etc/bash.bashrc and ~/.bashrc and never /etc/profile.d, so the script hooks tmout.sh into
+# /etc/bash.bashrc. The block is pulled out of the script and run against a copy of that file.
+hook_block=$(awk '
+    $0 == "if [ \"${FLAVOR}\" = \"debian\" ]; then" { start = NR; buf = $0; next }
+    start && NR == start + 1 && !index($0, "TMOUT_HOOK=") { start = 0 }
+    start { buf = buf "\n" $0; if ($0 == "fi") { print buf; exit } }
+' "${SCRIPT}")
+BASHRC="${WORK}/bash.bashrc"
+printf '%s\n' "${hook_block}" \
+    | sed -e "s#/etc/bash\.bashrc#${BASHRC}#g" -e "s#/etc/profile\.d/tmout\.sh#${SH}#g" > "${WORK}/hook_block.sh"
+
+# The head of Debian's own file, which returns early for non-interactive shells. The final newline
+# is left out on purpose, the way a hand edited file can end. The ${PS1-} is file content, not
+# something to expand here
+# shellcheck disable=SC2016
+seed_bashrc() {
+    printf '%s\n%s\n%s' '# System-wide .bashrc file for interactive bash(1) shells.' \
+        '[ -z "${PS1-}" ] && return' 'shopt -s checkwinsize' > "${BASHRC}"
+}
+# Runs the extracted block the way the script does, with log and LOG_FILE stubbed. FLAVOR,
+# LOG_FILE and log are read by the sourced block, which the linter cannot see
+# shellcheck disable=SC2034,SC2329
+run_hook_block() {
+    ( FLAVOR="${1}"; LOG_FILE=/dev/null; log() { :; }; . "${WORK}/hook_block.sh" )
+}
+hook_count() { grep -cF "${SH}" "${BASHRC}" 2>/dev/null; }
+
+if grep -q 'TMOUT_HOOK=' "${WORK}/hook_block.sh"; then
+    pass "the Debian bash.bashrc block was located in the script"
+else
+    fail "the Debian bash.bashrc block was located in the script" "nothing extracted"
+fi
+
+seed_bashrc
+run_hook_block debian
+if [ "$(hook_count)" -eq 1 ] && grep -qx 'shopt -s checkwinsize' "${BASHRC}"; then
+    pass "the hook is appended once, and the last line of a file without a final newline survives"
+else
+    fail "the hook is appended once, and the last line survives" "$(cat "${BASHRC}")"
+fi
+
+run_hook_block debian
+if [ "$(hook_count)" -eq 1 ]; then
+    pass "a second run does not add it again"
+else
+    fail "a second run does not add it again" "$(cat "${BASHRC}")"
+fi
+
+# This is the su case itself: a non-login interactive bash whose only startup file is bash.bashrc
+out=$(HISTFILE=/dev/null bash --rcfile "${BASHRC}" -i \
+    -c 'echo "TMOUT=[${TMOUT}]"; ( TMOUT=0 ) 2>/dev/null && echo WRITABLE || echo READONLY' 2>&1 < /dev/null)
+case "${out}" in
+    *'TMOUT=[600]'*READONLY*) pass "a non-login interactive shell, as su starts, gets TMOUT=600 readonly" ;;
+    *) fail "a non-login interactive shell, as su starts, gets TMOUT=600 readonly" "${out}" ;;
+esac
+
+# Debian's /etc/profile reads /etc/bash.bashrc before /etc/profile.d, so a login shell now sources
+# tmout.sh twice. PS1 is set because that is what lets the file go past its early return
+out=$(as_login_shell "PS1='\$ '; . ${BASHRC}; . ${SH}; echo \"TMOUT=[\$TMOUT]\"")
+case "${out}" in
+    *'readonly variable'*|*'read-only'*) fail "a login shell reading both stays silent" "${out}" ;;
+    *'TMOUT=[600]'*) pass "a login shell reading both bash.bashrc and profile.d stays silent" ;;
+    *) fail "a login shell reading both keeps TMOUT set" "${out}" ;;
+esac
+
+# EL's /etc/bashrc already reads /etc/profile.d for non-login shells, so its file is left alone
+rm -f "${BASHRC}"
+run_hook_block rhel
+if [ ! -e "${BASHRC}" ]; then
+    pass "on EL bash.bashrc is not touched"
+else
+    fail "on EL bash.bashrc is not touched" "$(cat "${BASHRC}")"
 fi
 
 echo

@@ -2112,6 +2112,7 @@ if [ "${FLAVOR}" = "debian" ]; then
         log "Activating apparmor"
         systemctl enable apparmor 2>> "${LOG_FILE}" || log "Failed to enable apparmor" "ERROR"
         systemctl start apparmor 2>> "${LOG_FILE}" || log "Failed to start apparmor" "ERROR"
+    fi
 fi
 
 # Don't fetch dnf epel packages since it's not sure we get internet

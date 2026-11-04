@@ -893,6 +893,79 @@ dnf_remove_old_kernels() {
     return 0
 }
 
+remove_packages_if_unneeded() {
+    # Removes those of the given packages that are installed, but only when nothing else goes with
+    # them. A plain apt-get remove or dnf remove also takes away every installed package that depends
+    # on the ones named, and dnf goes on to remove their now unused dependencies as well, so a
+    # hardening step aimed at telnet could take an application down with it.
+    #
+    # Packages that are not installed, or that this release does not ship, are skipped. When the
+    # removal would take anything else along, nothing at all is removed and a NOTICE says what is in
+    # the way, since keeping a package something needs is the right call rather than a failure.
+    # Pass packages that depend on each other in one call, such as a transitional package and the one
+    # it points to, so that each one going is not counted as the other being dragged along.
+    #
+    # Returns 0 when the packages are gone or were never there, 1 when they were left in place
+    local pkg installed simulation removed extra
+
+    installed=""
+    for pkg in "$@"; do
+        if [ "${FLAVOR}" = "rhel" ]; then
+            rpm -q "${pkg}" > /dev/null 2>&1 && installed="${installed} ${pkg}"
+        # A held package reads "hold ok installed", a removed one keeps "deinstall ok config-files"
+        elif dpkg-query -s "${pkg}" 2>/dev/null | grep -qE '^Status: [a-z]+ ok installed$'; then
+            installed="${installed} ${pkg}"
+        fi
+    done
+    if [ -z "${installed}" ]; then
+        log "None of $* is installed, nothing to remove"
+        return 0
+    fi
+
+    if [ "${FLAVOR}" = "rhel" ]; then
+        # rpm -e removes exactly what it is given: it refuses while another installed package still
+        # requires one of them, and never touches their own dependencies
+        # We actually want word splitting here
+        # shellcheck disable=SC2086
+        if ! rpm -e --test ${installed} >> "${LOG_FILE}" 2>&1; then
+            log "Not removing${installed}, other installed packages require them. See log file" "NOTICE"
+            return 1
+        fi
+        # shellcheck disable=SC2086
+        if ! rpm -e ${installed} 2>> "${LOG_FILE}"; then
+            log "Failed to remove${installed}" "ERROR"
+            return 1
+        fi
+    else
+        # apt-get remove leaves the packages' own dependencies alone, but it removes every package that
+        # depends on them. The simulation lists everything that would go, one Remv line each
+        # shellcheck disable=SC2086
+        if ! simulation=$(apt-get -s remove ${installed} 2>> "${LOG_FILE}"); then
+            log "Cannot work out what removing${installed} would take along" "ERROR"
+            return 1
+        fi
+        removed=$(printf '%s\n' "${simulation}" | awk '$1 == "Remv" {print $2}')
+        extra=""
+        for pkg in ${removed}; do
+            case " ${installed} " in
+                *" ${pkg} "*) ;;
+                *) extra="${extra} ${pkg}" ;;
+            esac
+        done
+        if [ -n "${extra}" ]; then
+            log "Not removing${installed}, it would also remove${extra}" "NOTICE"
+            return 1
+        fi
+        # shellcheck disable=SC2086
+        if ! apt-get remove -y ${installed} 2>> "${LOG_FILE}"; then
+            log "Failed to remove${installed}" "ERROR"
+            return 1
+        fi
+    fi
+    log "Removed${installed}"
+    return 0
+}
+
 harden_node_exporter_service() {
     # Trims the systemd unit the vendored installer writes.
     #
@@ -4961,12 +5034,19 @@ if [ -d /etc/modprobe.d ]; then
 fi
 
 # Apply CIS 1.3.1.1
+# Clients, telnet servers and inetd super servers are removed as three groups, so a package something
+# else needs only keeps its own group in place. The servers go before inetd, which they depend on.
+# On Debian 12+ and Ubuntu 24.04 telnet and telnetd are transitional, inetutils-* carry the binaries
 if [ "${FLAVOR}" = "debian" ]; then
     log "Applying CIS 1.3.1.1"
-    apt-get remove telnet inetd-utils 2>> "${LOG_FILE}" || log "Failed to remove telnet and inetd-utils" "ERROR"
+    remove_packages_if_unneeded telnet inetutils-telnet telnet-ssl
+    remove_packages_if_unneeded telnetd inetutils-telnetd telnetd-ssl
+    remove_packages_if_unneeded openbsd-inetd inetutils-inetd xinetd rlinetd
 elif [ "${FLAVOR}" = "rhel" ]; then
     log "Applying CIS 1.3.1.1"
-    yum remove -y telnet inetd 2>> "${LOG_FILE}" || log "Failed to remove telnet and inetd" "ERROR"
+    remove_packages_if_unneeded telnet
+    remove_packages_if_unneeded telnet-server
+    remove_packages_if_unneeded xinetd
 fi
 
 # Apply CIS 1.5.1,1.5.2

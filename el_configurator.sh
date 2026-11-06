@@ -625,8 +625,7 @@ load_profile() {
         log_quit "Profile file ${path}: holds NUL bytes, it is not a text file"
     fi
     log "Loading profile ${name} from ${path} (sha256 $(sha256sum < "${copy}" | cut -c 1-16)...)"
-    [ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}"
-    [ $? -ne 0 ] && log "Failed to create /etc/el_configurator" "ERROR"
+    mkdir_if_not_exists "/etc/el_configurator"
     [ ! -f "/etc/el_configurator/${name}.profile" ] && rm -f "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}"
     [ $? -ne 0 ] && log "Failed to remove existing /etc/el_configurator/${name}.profile" "ERROR"
     cp "${copy}" "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to create /etc/el_configurator/${name}.profile" "ERROR"
@@ -828,6 +827,17 @@ escape_bre() {
     printf '%s' "${__escaped}"
 }
 
+mkdir_if_not_exists() {
+    local dir="${1}"
+    if [ ! -d "${dir}" ]; then
+        if ! mkdir -p "${dir}" 2>> "${LOG_FILE}"; then
+            log "Failed to create directory ${dir}" "ERROR"
+            return 1
+        fi
+    fi
+    return 0
+}
+
 set_conf_value() {
     # Updates a line in a configuration file
     # name=value or name    =   value (gets rewritten to name=value) if separator = '='
@@ -959,15 +969,10 @@ install_ssg_debian_packages() {
 	
     ssg_dir="/opt/ssg"
 
-    if [ ! -d "${ssg_dir}" ]; then
-        log "Creating ${ssg_dir} for SCAP content"
-        mkdir -p "${ssg_dir}" 2>> "${LOG_FILE}" || {
-            log "Cannot create ${ssg_dir} for SCAP content" "ERROR"
-            return 1
-        }
-    else
-        log "Using existing ${ssg_dir} for SCAP content"
-    fi
+    mkdir_if_not_exists "${ssg_dir}"
+    [ $? -ne 0 ] && return 1
+    
+    log "Using existing ${ssg_dir} for SCAP content"
 
     printf '%s\n' "${SSG_DEBIAN_PACKAGES}" > "${ssg_dir}/SHA256SUMS"
 
@@ -1382,11 +1387,9 @@ harden_node_exporter_service() {
     local dropin_dir="/etc/systemd/system/node_exporter.service.d"
     local dropin="${dropin_dir}/99-el_configurator.conf"
 
-    if [ ! -d "${dropin_dir}" ]; then
-        mkdir -p "${dropin_dir}" 2>> "${LOG_FILE}" || {
-            log "Cannot create ${dropin_dir}" "ERROR"
-            return 1
-        }
+    if ! mkdir_if_not_exists "${dropin_dir}"; then
+        log "Cannot create ${dropin_dir}" "ERROR"
+        return 1
     fi
 
     cat << 'EOF' > "${dropin}" 2>> "${LOG_FILE}"
@@ -1452,7 +1455,7 @@ disable_apparmor_runc_profile() {
     fi
 
     log "Disabling AppArmor runc profile which may cause issues with containers"
-    if [ ! -d "${disable_dir}" ] && ! mkdir -p "${disable_dir}" 2>> "${LOG_FILE}"; then
+    if ! mkdir_if_not_exists "${disable_dir}"; then
         log "Cannot create ${disable_dir}" "ERROR"
         return 1
     fi
@@ -1496,7 +1499,7 @@ write_systemd_dropin() {
         return 1
     fi
 
-    if [ ! -d "${dropin_dir}" ] && ! mkdir -p "${dropin_dir}" 2>> "${LOG_FILE}"; then
+    if ! mkdir_if_not_exists "${dropin_dir}"; then
         log "Cannot create ${dropin_dir}" "ERROR"
         return 1
     fi
@@ -2350,11 +2353,9 @@ prepare_node_exporter_textfile_dir() {
     setup_node_exporter_user || return 1
     [ "${NODE_EXPORTER_USER}" = root ] && group=root
 
-    if [ ! -d "${dir}" ]; then
-        mkdir -p "${dir}" 2>> "${LOG_FILE}" || {
-            log "Failed to create ${dir}" "ERROR"
-            return 1
-        }
+    if ! mkdir_if_not_exists "${dir}"; then
+        log "Failed to create ${dir}" "ERROR"
+        return 1
     fi
     # The parent has to be traversable, and mkdir honours whatever umask this run inherited
     chmod 0755 /var/lib/node_exporter 2>> "${LOG_FILE}" || log "Failed to chmod /var/lib/node_exporter" "ERROR"
@@ -2674,8 +2675,8 @@ if [ -n "${SCAP_PROFILE}" ] && [ "${SCAP_PROFILE}" != false ]; then
     # Datastream oscap will be pointed at, eg /usr/share/xml/scap/ssg/content/ssg-debian13-ds.xml
     SSG_DATASTREAM="/usr/share/xml/scap/ssg/content/ssg-${DIST}${RELEASE}-ds.xml"
     # Disable --fetch-remote-resources on machines without internet
-    if [ ! -d /root/openscap_report ]; then
-        mkdir /root/openscap_report 2>> "${LOG_FILE}" || log "Failed to create /root/openscap_report directory" "ERROR"
+    if ! mkdir_if_not_exists "/root/openscap_report"; then
+        log "Failed to create /root/openscap_report directory" "ERROR"
     fi
 
     check_internet
@@ -3954,14 +3955,14 @@ EOF
         else
             TUNED_DIR=/etc/tuned
         fi
-        if [ ! -d "${TUNED_DIR}/el-eco" ]; then
-            mkdir -p "${TUNED_DIR}/el-eco" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-eco directory" "ERROR"
+        if ! mkdir_if_not_exists "${TUNED_DIR}/el-eco"; then
+            log "Failed to create ${TUNED_DIR}/el-eco directory" "ERROR"
         fi
-        if [ ! -d "${TUNED_DIR}/el-balanced" ]; then
-            mkdir -p "${TUNED_DIR}/el-balanced" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-balanced directory" "ERROR"
+        if ! mkdir_if_not_exists "${TUNED_DIR}/el-balanced"; then
+            log "Failed to create ${TUNED_DIR}/el-balanced directory" "ERROR"
         fi
-        if [ ! -d "${TUNED_DIR}/el-perf" ]; then
-            mkdir -p "${TUNED_DIR}/el-perf" 2>> "${LOG_FILE}" || log "Failed to create ${TUNED_DIR}/el-perf directory" "ERROR"
+        if ! mkdir_if_not_exists "${TUNED_DIR}/el-perf"; then
+            log "Failed to create ${TUNED_DIR}/el-perf directory" "ERROR"
         fi
 
         cat << 'EOF' > "${TUNED_DIR}/el-eco/tuned.conf"
@@ -4309,8 +4310,8 @@ fi
 
 # Configure persistent journal
 log "Setting up persistent boot journal"
-if [ ! -d /var/log/journal ]; then
-    mkdir -p /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create /var/log/journal directory" "ERROR"
+if ! mkdir_if_not_exists "/var/log/journal"; then
+    log "Failed to create /var/log/journal directory" "ERROR"
 fi
 systemd-tmpfiles --create --prefix /var/log/journal 2>> "${LOG_FILE}" || log "Failed to create systemd-tmpfiles" "ERROR"
 # SystemMaxUse is what actually caps the journal. The vacuum further down only trims what is on disk
@@ -4467,8 +4468,8 @@ if [ "${NTP_SERVERS}" != "" ]; then
         ntp_conf_file=/etc/chrony/sources.d/local-ntp-server.sources
         chrony_main_conf=/etc/chrony/chrony.conf
         ntp_sources_dir=/etc/chrony/sources.d
-        if [ ! -d /etc/chrony/sources.d ]; then
-            mkdir -p /etc/chrony/sources.d 2>> "${LOG_FILE}" || log "Failed to create /etc/chrony/sources.d directory" "ERROR"
+        if ! mkdir_if_not_exists "/etc/chrony/sources.d"; then
+            log "Failed to create /etc/chrony/sources.d directory" "ERROR"
         fi
     else
         log "Cannot setup NTP on this system. Looks unsupported" "ERROR"
@@ -5749,8 +5750,9 @@ else
 fi
 echo "${REMOTE_LOGIN_BANNER}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
 echo "${MOTD_MSG}" >> /etc/motd 2>> "${LOG_FILE}" || log "Failed to add cow to /etc/motd" "ERROR"
-[ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}"
-[ $? -ne 0 ] && log "Failed to create /etc/el_configurator" "ERROR"
+if ! mkdir_if_not_exists "/etc/el_configurator"; then
+    log "Failed to create /etc/el_configurator" "ERROR"
+fi
 echo "${ELCONF_STATUS}" > /etc/el_configurator/state 2>> "${LOG_FILE}" || log "Failed to write status to /etc/el_configurator/state" "ERROR"
 
 # Cleanup. The kickstart file itself is already handled by inst.nosave=all_ks, this is belt and

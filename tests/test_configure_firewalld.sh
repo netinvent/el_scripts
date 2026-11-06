@@ -24,12 +24,15 @@ if [ ! -f "${SCRIPT}" ]; then
     exit 2
 fi
 
-start=$(grep -n '^configure_firewalld() {' "${SCRIPT}" | head -n 1 | cut -d: -f1)
-if [ -z "${start}" ]; then
-    echo "Cannot locate configure_firewalld() in [${SCRIPT}]"
+# configure_firewalld and the two helpers right above it, which open ports and set up the ssh
+# interface. start is the first helper, end the end of configure_firewalld
+start=$(grep -n '^configure_firewalld_open_ports() {' "${SCRIPT}" | head -n 1 | cut -d: -f1)
+main_start=$(grep -n '^configure_firewalld() {' "${SCRIPT}" | head -n 1 | cut -d: -f1)
+if [ -z "${start}" ] || [ -z "${main_start}" ] || ! grep -q '^configure_firewalld_ssh_interface() {' "${SCRIPT}"; then
+    echo "Cannot locate configure_firewalld() and its helpers in [${SCRIPT}]"
     exit 2
 fi
-end=$(awk -v s="${start}" 'NR>=s && /^\}$/ {print NR; exit}' "${SCRIPT}")
+end=$(awk -v s="${main_start}" 'NR>=s && /^\}$/ {print NR; exit}' "${SCRIPT}")
 
 HELPERS=$(mktemp)
 WORK=$(mktemp -d)
@@ -70,17 +73,66 @@ FW_REJECT=""
 # It reproduces the behaviour that matters here: adding a source that is already bound fails, while
 # querying it succeeds. Counting exit codes would call that a failure, which is why the real code
 # asks for the resulting state instead.
+#
+# Ports, services, rich rules and interfaces are kept in ITEMS as zone|kind|value, the default zone
+# being public, and zones made with --new-zone in ZONES. An add into a zone that does not exist fails,
+# as does one whose value contains FW_REJECT_ITEM.
+ITEMS="${WORK}/items"
+ZONES="${WORK}/zones"
+FW_REJECT_ITEM=""
 # shellcheck disable=SC2329
 firewall-offline-cmd() {
-    local arg zone="" op="" val=""
+    local arg zone="" op="" val="" kind=""
     printf '%s\n' "$*" >> "${CALLS}"
     for arg in "$@"; do
         case "${arg}" in
             --zone=*)          zone="${arg#--zone=}" ;;
             --add-source=*)    op=add;   val="${arg#--add-source=}" ;;
             --query-source=*)  op=query; val="${arg#--query-source=}" ;;
+            --get-zones)       op=get_zones ;;
+            --new-zone=*)      op=new_zone; val="${arg#--new-zone=}" ;;
+            --delete-zone=*)   op=delete_zone; val="${arg#--delete-zone=}" ;;
+            --add-port=*|--add-service=*|--add-rich-rule=*|--change-interface=*)
+                op=add_item; kind="${arg%%=*}"; kind="${kind#--add-}"; kind="${kind#--change-}"; val="${arg#*=}" ;;
+            --query-port=*|--query-service=*|--query-rich-rule=*|--query-interface=*)
+                op=query_item; kind="${arg%%=*}"; kind="${kind#--query-}"; val="${arg#*=}" ;;
         esac
     done
+    case "${op}" in
+        get_zones)
+            printf 'block dmz drop external home internal public trusted work'
+            [ -s "${ZONES}" ] && printf ' %s' "$(tr '\n' ' ' < "${ZONES}")"
+            echo
+            return 0
+            ;;
+        new_zone)
+            grep -qxF "${val}" "${ZONES}" 2>/dev/null && return 1     # NAME_CONFLICT
+            printf '%s\n' "${val}" >> "${ZONES}"
+            return 0
+            ;;
+        delete_zone)
+            grep -qxF "${val}" "${ZONES}" 2>/dev/null || return 1     # INVALID_ZONE
+            grep -vxF "${val}" "${ZONES}" > "${ZONES}.new"; mv "${ZONES}.new" "${ZONES}"
+            grep -v "^${val}|" "${ITEMS}" > "${ITEMS}.new" 2>/dev/null; mv "${ITEMS}.new" "${ITEMS}"
+            return 0
+            ;;
+        add_item)
+            case "${zone:-public}" in
+                block|dmz|drop|external|home|internal|public|trusted|work) ;;
+                *) grep -qxF "${zone}" "${ZONES}" 2>/dev/null || return 1 ;;
+            esac
+            if [ -n "${FW_REJECT_ITEM}" ] && [[ "${val}" == *"${FW_REJECT_ITEM}"* ]]; then
+                return 1
+            fi
+            grep -qxF "${zone:-public}|${kind}|${val}" "${ITEMS}" 2>/dev/null && return 1    # ALREADY_ENABLED
+            printf '%s|%s|%s\n' "${zone:-public}" "${kind}" "${val}" >> "${ITEMS}"
+            return 0
+            ;;
+        query_item)
+            grep -qxF "${zone:-public}|${kind}|${val}" "${ITEMS}" 2>/dev/null
+            return $?
+            ;;
+    esac
     case "${op}" in
         add)
             case " ${FW_REJECT} " in *" ${val} "*) return 1 ;; esac
@@ -110,7 +162,11 @@ fail() { FAILED=$((FAILED + 1)); printf '  FAIL %s\n' "${1}"; shift; [ $# -gt 0 
 run_case() {
     : > "${CALLS}"
     : > "${ERRORS_TEXT}"
-    [ "${1}" = keepstate ] || : > "${BOUND}"
+    if [ "${1}" != keepstate ]; then
+        : > "${BOUND}"
+        : > "${ITEMS}"
+        : > "${ZONES}"
+    fi
     LOGGED_ERRORS=0
     configure_firewalld > /dev/null 2>&1
     return $?
@@ -228,6 +284,114 @@ if [ "${rc}" -eq 0 ] && ! ssh_removed && [ "${LOGGED_ERRORS}" -eq 0 ]; then
 else
     fail "with no whitelist, ssh is left alone" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${CALLS}")"
 fi
+
+has_item() { grep -qxF "${1}" "${ITEMS}"; }
+SSH_RULE='el-ssh|rich-rule|rule family="ipv4" source address="10.99.0.1" service name="ssh" accept'
+
+echo
+echo "== an ssh interface, a whitelist and open ports =="
+
+FIREWALL_WHITELIST_IP_LIST="192.0.2.0/24"
+FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=false
+NODE_EXPORTER_USE_IP_WHITELISTS=false
+FIREWALL_SSH_INTERFACE=wg0
+FIREWALL_SSH_INTERFACE_SOURCES="10.99.0.1"
+FIREWALL_OPEN_PORTS="51820/udp"
+FW_REJECT=""
+FW_REJECT_ITEM=""
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && [ "${LOGGED_ERRORS}" -eq 0 ]; then
+    pass "all three: returns 0 and logs no ERROR"
+else
+    fail "all three: returns 0 and logs no ERROR" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${ERRORS_TEXT}")"
+fi
+if has_item 'el-ssh|interface|wg0' && has_item "${SSH_RULE}" && ! has_item 'el-ssh|service|ssh'; then
+    pass "the interface gets its own zone, with ssh from its source only"
+else
+    fail "the interface gets its own zone, with ssh from its source only" "$(cat "${ITEMS}")"
+fi
+if ! grep -q -- '--add-source=10.99.0.1' "${CALLS}"; then
+    pass "the interface's source is not a zone source, which would let it in on every interface"
+else
+    fail "the interface's source is not a zone source" "$(cat "${CALLS}")"
+fi
+if has_item 'public|port|51820/udp'; then
+    pass "the open port is in the default zone"
+else
+    fail "the open port is in the default zone" "$(cat "${ITEMS}")"
+fi
+if ssh_removed && [ "$(grep -c -- '--zone=dmz --add-source=192.0.2.0/24' "${CALLS}")" -eq 1 ]; then
+    pass "the whitelist still narrows the default zone as before"
+else
+    fail "the whitelist still narrows the default zone as before" "$(cat "${CALLS}")"
+fi
+
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 0 ] && [ "${LOGGED_ERRORS}" -eq 0 ] && grep -qx -- '--delete-zone=el-ssh' "${CALLS}" \
+        && [ "$(grep -cxF "${SSH_RULE}" "${ITEMS}")" -eq 1 ]; then
+    pass "a second run rebuilds the zone, cleanly"
+else
+    fail "a second run rebuilds the zone, cleanly" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${ERRORS_TEXT}")" "$(cat "${ITEMS}")"
+fi
+
+FIREWALL_SSH_INTERFACE_SOURCES=""
+run_case
+if has_item 'el-ssh|service|ssh' && ! grep -q 'rich-rule' "${ITEMS}"; then
+    pass "without sources, the zone allows ssh from anyone on the interface"
+else
+    fail "without sources, the zone allows ssh from anyone on the interface" "$(cat "${ITEMS}")"
+fi
+
+echo
+echo "== an ssh interface alone narrows the default zone too =="
+
+FIREWALL_WHITELIST_IP_LIST=""
+FIREWALL_SSH_INTERFACE_SOURCES="10.99.0.1"
+FIREWALL_OPEN_PORTS=""
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && ssh_removed && has_item "${SSH_RULE}" && [ "${LOGGED_ERRORS}" -eq 0 ]; then
+    pass "no whitelist, an interface: ssh leaves the default zone, the interface keeps it"
+else
+    fail "no whitelist, an interface: ssh leaves the default zone" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${CALLS}")"
+fi
+
+FW_REJECT_ITEM="10.99.0.1"
+run_case
+rc=$?
+if [ "${rc}" -eq 1 ] && ssh_removed && grep -q 'source 10.99.0.1' "${ERRORS_TEXT}"; then
+    pass "a rule that did not land: still narrowed, returns 1, and the ERROR names the source"
+else
+    fail "a rule that did not land: still narrowed, returns 1, and the ERROR names the source" "rc=${rc}" "$(cat "${ERRORS_TEXT}")"
+fi
+FW_REJECT_ITEM=""
+
+echo
+echo "== open ports alone change nothing else =="
+
+FIREWALL_SSH_INTERFACE=""
+FIREWALL_SSH_INTERFACE_SOURCES=""
+FIREWALL_OPEN_PORTS="51820/udp:60000-60010/udp"
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && has_item 'public|port|51820/udp' && has_item 'public|port|60000-60010/udp' && ! ssh_removed; then
+    pass "ports open, and with no whitelist and no interface ssh is left alone"
+else
+    fail "ports open, and ssh is left alone" "rc=${rc}" "$(cat "${CALLS}")"
+fi
+
+FW_REJECT_ITEM="60000"
+run_case
+rc=$?
+if [ "${rc}" -eq 1 ] && grep -q '60000-60010/udp' "${ERRORS_TEXT}" && has_item 'public|port|51820/udp'; then
+    pass "a port that did not open: returns 1 and the ERROR names it"
+else
+    fail "a port that did not open: returns 1 and the ERROR names it" "rc=${rc}" "$(cat "${ERRORS_TEXT}")"
+fi
+FW_REJECT_ITEM=""
+FIREWALL_OPEN_PORTS=""
 
 echo
 echo "== el_configurator.sh wiring =="

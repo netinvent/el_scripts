@@ -217,6 +217,88 @@ else
 fi
 
 echo
+echo "== an ssh interface and open ports =="
+
+# A stub that rejects only the allow rules containing UFW_REJECT, replacing the one above
+# shellcheck disable=SC2329
+ufw() {
+    printf '%s\n' "ufw $*" >> "${CALLS}"
+    case "${1}" in
+        allow)
+            if [ -n "${UFW_REJECT}" ] && [[ "$*" == *"${UFW_REJECT}"* ]]; then
+                return 1
+            fi
+            return 0
+            ;;
+        *) return 0 ;;
+    esac
+}
+UFW_REJECT=""
+FIREWALL_WHITELIST_IP_LIST="192.0.2.0/24"
+FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=false
+NODE_EXPORTER_USE_IP_WHITELISTS=false
+FIREWALL_SSH_INTERFACE=wg0
+FIREWALL_SSH_INTERFACE_SOURCES="10.99.0.1"
+FIREWALL_OPEN_PORTS="51820/udp:60000-60010/udp"
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && [ "${LOGGED_ERRORS}" -eq 0 ]; then
+    pass "interface, whitelist and ports: returns 0 and logs no ERROR"
+else
+    fail "interface, whitelist and ports: returns 0 and logs no ERROR" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${CALLS}")"
+fi
+if grep -qx -- 'ufw allow in on wg0 from 10.99.0.1 to any port 22 proto tcp' "${CALLS}"; then
+    pass "ssh is allowed on the interface from its source only"
+else
+    fail "ssh is allowed on the interface from its source only" "$(cat "${CALLS}")"
+fi
+if grep -qx -- 'ufw allow 51820/udp' "${CALLS}" && grep -qx -- 'ufw allow 60000:60010/udp' "${CALLS}"; then
+    pass "every open port is allowed, a range written the ufw way"
+else
+    fail "every open port is allowed, a range written the ufw way" "$(cat "${CALLS}")"
+fi
+if grep -qx -- 'ufw allow from 192.0.2.0/24 to any port 22 proto tcp' "${CALLS}" && ! grep -qx -- 'ufw allow ssh' "${CALLS}"; then
+    pass "the whitelist still gets ssh, and nobody else does"
+else
+    fail "the whitelist still gets ssh, and nobody else does" "$(cat "${CALLS}")"
+fi
+assert_rules_before_enable "interface and ports: every rule is in place before ufw is enabled"
+
+FIREWALL_WHITELIST_IP_LIST=""
+FIREWALL_SSH_INTERFACE_SOURCES=""
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && grep -qx -- 'ufw allow in on wg0 to any port 22 proto tcp' "${CALLS}" \
+        && ! grep -qx -- 'ufw allow ssh' "${CALLS}" && grep -q -- 'ufw enable' "${CALLS}"; then
+    pass "interface alone: ssh from anyone on it only, and ufw is enabled"
+else
+    fail "interface alone: ssh from anyone on it only, and ufw is enabled" "rc=${rc}" "$(cat "${CALLS}")"
+fi
+
+FIREWALL_SSH_INTERFACE_SOURCES="10.99.0.1"
+UFW_REJECT="in on wg0"
+run_case
+rc=$?
+if [ "${rc}" -eq 1 ] && [ "${LOGGED_ERRORS}" -ge 1 ] && ! grep -q -- 'ufw enable' "${CALLS}"; then
+    pass "interface rule rejected and nothing else: ufw stays off, so the machine is not locked out"
+else
+    fail "interface rule rejected and nothing else: ufw stays off" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${CALLS}")"
+fi
+
+FIREWALL_SSH_INTERFACE=""
+FIREWALL_SSH_INTERFACE_SOURCES=""
+UFW_REJECT="allow ssh"
+run_case
+rc=$?
+if [ "${rc}" -eq 1 ] && grep -qx -- 'ufw allow 51820/udp' "${CALLS}" && ! grep -q -- 'ufw enable' "${CALLS}"; then
+    pass "an open port does not count as a way in"
+else
+    fail "an open port does not count as a way in" "rc=${rc}" "$(cat "${CALLS}")"
+fi
+UFW_REJECT=""
+FIREWALL_OPEN_PORTS=""
+
+echo
 echo "== el_configurator.sh calls it, and nothing enables ufw behind its back =="
 
 if grep -qE '^[[:space:]]*configure_ufw$' "${SCRIPT}"; then

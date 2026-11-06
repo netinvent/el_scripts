@@ -41,6 +41,9 @@ extract_function() {
 
 add_lines=$(extract_function configure_ntp_servers)
 disable_lines=$(extract_function disable_existing_ntp_sources)
+# Both read NTP_USE_NTS through it. Without it every call would be an unknown command, and NTS would
+# silently read as off
+extract_function is_enabled > /dev/null
 start="${add_lines%%-*}"
 end="${add_lines##*-}"
 
@@ -293,6 +296,67 @@ elif [ "${LOGGED_ERRORS}" -ge 1 ]; then
 else
     fail "a missing chrony.conf logs an ERROR"
 fi
+
+echo
+echo "== NTP_USE_NTS =="
+
+NTP_SERVERS="nts.example.net:10.0.0.1"
+NTP_USE_NTS=true
+REPLACE_EXISTING_NTP=false
+reset_conf "${RHEL_STOCK}"
+configure_ntp_servers "${CONF}" > /dev/null
+rc=$?
+if [ "${rc}" -eq 0 ] && grep -qx 'server nts.example.net iburst nts' "${CONF}" && grep -qx 'server 10.0.0.1 iburst nts' "${CONF}" \
+        && ! grep '^server' "${CONF}" | grep -q 'iburst$'; then
+    pass "every server is written with the nts option"
+else
+    fail "every server is written with the nts option" "rc=${rc}" "$(cat "${CONF}")"
+fi
+configure_ntp_servers "${CONF}" > /dev/null
+if [ "$(grep -c '^server ' "${CONF}")" -eq 2 ]; then
+    pass "re-running with NTS is a no-op"
+else
+    fail "re-running with NTS is a no-op" "$(cat "${CONF}")"
+fi
+
+# An earlier run without NTS left the plain lines: switching must not configure a server twice
+reset_conf "${RHEL_STOCK}server nts.example.net iburst
+server 10.0.0.1 iburst
+"
+configure_ntp_servers "${CONF}" > /dev/null
+rc=$?
+if [ "${rc}" -eq 0 ] && [ "${LOGGED_ERRORS}" -eq 0 ] && [ "$(grep -c '^server ' "${CONF}")" -eq 2 ] \
+        && grep -qx 'server nts.example.net iburst nts' "${CONF}" && ! grep -qx 'server nts.example.net iburst' "${CONF}"; then
+    pass "turning NTS on replaces the plain lines of an earlier run"
+else
+    fail "turning NTS on replaces the plain lines of an earlier run" "rc=${rc} errors=${LOGGED_ERRORS}" "$(cat "${CONF}")"
+fi
+if grep -qx 'sourcedir /run/chrony-dhcp' "${CONF}" && grep -qx 'pool 2.rocky.pool.ntp.org iburst' "${CONF}"; then
+    pass "turning NTS on leaves the other lines alone"
+else
+    fail "turning NTS on leaves the other lines alone" "$(cat "${CONF}")"
+fi
+
+NTP_USE_NTS=false
+configure_ntp_servers "${CONF}" > /dev/null
+if [ "$(grep -c '^server ' "${CONF}")" -eq 2 ] && grep -qx 'server 10.0.0.1 iburst' "${CONF}" && ! grep -q 'iburst nts' "${CONF}"; then
+    pass "turning NTS off again replaces the nts lines"
+else
+    fail "turning NTS off again replaces the nts lines" "$(cat "${CONF}")"
+fi
+
+# The exclusive mode keeps what configure_ntp_servers writes, and only that
+NTP_USE_NTS=true
+reset_conf "${RHEL_STOCK}server nts.example.net iburst nts
+server 10.0.0.1 iburst
+"
+disable_existing_ntp_sources "${CONF}" "" > /dev/null
+if grep -qx 'server nts.example.net iburst nts' "${CONF}" && grep -qx '# Disabled by el_configurator, REPLACE_EXISTING_NTP is set: server 10.0.0.1 iburst' "${CONF}"; then
+    pass "REPLACE_EXISTING_NTP keeps the nts lines and disables a plain one"
+else
+    fail "REPLACE_EXISTING_NTP keeps the nts lines and disables a plain one" "$(cat "${CONF}")"
+fi
+NTP_USE_NTS=false
 
 echo
 echo "== el_configurator.sh points at the right file per distribution =="

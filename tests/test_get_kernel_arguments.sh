@@ -102,41 +102,41 @@ echo "== kernel arguments are parsed, never executed =="
 # delimited token, so a payload with spaces merely produces an eval syntax error and would
 # make these tests pass for the wrong reason.
 check_no_exec "command substitution in a value does not run" \
-  "ro quiet NPF_BRAND_NAME=\$(id>${CANARY})"
+  "ro quiet ELCONF_BRAND_NAME=\$(id>${CANARY})"
 check_no_exec "backtick substitution in a value does not run" \
-  "ro quiet NPF_BRAND_NAME=\`id>${CANARY}\`"
+  "ro quiet ELCONF_BRAND_NAME=\`id>${CANARY}\`"
 check_no_exec "a semicolon does not start a second command" \
-  "ro NPF_BRAND_NAME=x;id>${CANARY}"
+  "ro ELCONF_BRAND_NAME=x;id>${CANARY}"
 check_no_exec "a redirection in a value does not truncate a file" \
-  "ro NPF_BRAND_NAME=x>${CANARY}"
+  "ro ELCONF_BRAND_NAME=x>${CANARY}"
 
 # The payload text must survive verbatim as data, not vanish.
 # Single quotes are deliberate here: the point is that $(id) is never expanded, hence the SC2016 waiver
 # shellcheck disable=SC2016
 check_var "an injection attempt is kept as a literal string" \
-  'ro NPF_BRAND_NAME=$(id)' "BRAND_NAME" '$(id)'
+  'ro ELCONF_BRAND_NAME=$(id)' "BRAND_NAME" '$(id)'
 
 echo
 echo "== values survive intact =="
 
 check_var "plain value" \
-  "ro quiet NPF_SCAP_PROFILE=anssi_bp28_intermediary" "SCAP_PROFILE" "anssi_bp28_intermediary"
+  "ro quiet ELCONF_SCAP_PROFILE=anssi_bp28_intermediary" "SCAP_PROFILE" "anssi_bp28_intermediary"
 
 check_var "value containing '=' is not truncated" \
-  "NPF_SOME_TOKEN=abc=def" "SOME_TOKEN" "abc=def"
+  "ELCONF_SOME_TOKEN=abc=def" "SOME_TOKEN" "abc=def"
 
 check_var "quoted value containing spaces" \
-  'ro NPF_ISSUE_MESSAGE_EXTRA="- Private System" quiet' "ISSUE_MESSAGE_EXTRA" "- Private System"
+  'ro ELCONF_ISSUE_MESSAGE_EXTRA="- Private System" quiet' "ISSUE_MESSAGE_EXTRA" "- Private System"
 
 check_var "colon separated list" \
-  "NPF_FIREWALL_WHITELIST_IP_LIST=192.168.200.0/24:10.0.0.1" \
+  "ELCONF_FIREWALL_WHITELIST_IP_LIST=192.168.200.0/24:10.0.0.1" \
   "FIREWALL_WHITELIST_IP_LIST" "192.168.200.0/24:10.0.0.1"
 
 check_var "empty value" \
-  "NPF_NTP_SERVERS= quiet" "NTP_SERVERS" ""
+  "ELCONF_NTP_SERVERS= quiet" "NTP_SERVERS" ""
 
 check_var "boolean false" \
-  "ro NPF_CONFIGURE_FAIL2BAN=false" "CONFIGURE_FAIL2BAN" "false"
+  "ro ELCONF_CONFIGURE_FAIL2BAN=false" "CONFIGURE_FAIL2BAN" "false"
 
 echo
 echo "== no glob expansion =="
@@ -146,9 +146,9 @@ cd "${FIXTURES}" || exit 2
 : > aaa.txt
 : > bbb.txt
 check_var "asterisk is kept literal, not expanded to filenames" \
-  "ro NPF_BRAND_NAME=*" "BRAND_NAME" "*"
+  "ro ELCONF_BRAND_NAME=*" "BRAND_NAME" "*"
 check_var "question mark is kept literal" \
-  "ro NPF_BRAND_NAME=?" "BRAND_NAME" "?"
+  "ro ELCONF_BRAND_NAME=?" "BRAND_NAME" "?"
 rm -f aaa.txt bbb.txt
 cd - > /dev/null || exit 2
 
@@ -156,7 +156,7 @@ echo
 echo "== several arguments on one line =="
 
 unset BRAND_NAME SCAP_PROFILE CONFIGURE_WATCHDOG
-parse 'BOOT_IMAGE=/vmlinuz ro NPF_BRAND_NAME="Net Perfect" quiet NPF_SCAP_PROFILE=false NPF_CONFIGURE_WATCHDOG=true rhgb'
+parse 'BOOT_IMAGE=/vmlinuz ro ELCONF_BRAND_NAME="Net Perfect" quiet ELCONF_SCAP_PROFILE=false ELCONF_CONFIGURE_WATCHDOG=true rhgb'
 if [ "${BRAND_NAME}" = "Net Perfect" ] && [ "${SCAP_PROFILE}" = "false" ] && [ "${CONFIGURE_WATCHDOG}" = "true" ]; then
     pass "three overrides on one line are all applied"
 else
@@ -167,16 +167,16 @@ fi
 unset BRAND_NAME
 parse 'BOOT_IMAGE=/vmlinuz ro quiet rhgb crashkernel=auto'
 if [ -z "${BRAND_NAME}" ] && [ "${LOGGED_ERRORS}" -eq 0 ]; then
-    pass "a line with no NPF_ arguments changes nothing and logs no error"
+    pass "a line with no ELCONF_ arguments changes nothing and logs no error"
 else
-    fail "a line with no NPF_ arguments changes nothing" "BRAND_NAME=$(printf '%q' "${BRAND_NAME}") errors=${LOGGED_ERRORS}"
+    fail "a line with no ELCONF_ arguments changes nothing" "BRAND_NAME=$(printf '%q' "${BRAND_NAME}") errors=${LOGGED_ERRORS}"
 fi
 
 echo
 echo "== refused arguments are reported, not silently applied =="
 
 saved_path="${PATH}"
-parse "ro NPF_PATH=/tmp/evil"
+parse "ro ELCONF_PATH=/tmp/evil"
 if [ "${PATH}" = "${saved_path}" ] && [ "${LOGGED_ERRORS}" -ge 1 ]; then
     pass "an exported variable such as PATH cannot be overwritten"
 else
@@ -185,7 +185,7 @@ else
 fi
 PATH="${saved_path}"
 
-parse "ro NPF_9INVALID=x"
+parse "ro ELCONF_9INVALID=x"
 if [ "${LOGGED_ERRORS}" -ge 1 ]; then
     pass "an invalid variable name is rejected with an ERROR"
 else

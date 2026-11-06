@@ -626,6 +626,9 @@ load_profile() {
         log_quit "Profile file ${path}: holds NUL bytes, it is not a text file"
     fi
     log "Loading profile ${name} from ${path} (sha256 $(sha256sum < "${copy}" | cut -c 1-16)...)"
+    [ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator"
+    [ ! -f "/etc/el_configurator/${name}.profile" ] && rm -f "/etc/el_configurator/${name}.profile"
+    cp "${copy}" "/etc/el_configurator/${name}.profile" && chmod 600 "/etc/el_configurator/${name}.profile"
     text="$(cat -- "${copy}")"
     rm -f "${copy}"
     parse_profile_text "${path}" "${text}"

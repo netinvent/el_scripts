@@ -626,8 +626,10 @@ load_profile() {
     fi
     log "Loading profile ${name} from ${path} (sha256 $(sha256sum < "${copy}" | cut -c 1-16)...)"
     mkdir_if_not_exists "/etc/el_configurator"
-    [ ! -f "/etc/el_configurator/${name}.profile" ] && rm -f "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}"
-    [ $? -ne 0 ] && log "Failed to remove existing /etc/el_configurator/${name}.profile" "ERROR"
+    if [ -f "/etc/el_configurator/${name}.profile" ]; then
+        rm -f "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}"
+        [ $? -ne 0 ] && log "Failed to remove existing /etc/el_configurator/${name}.profile" "ERROR"
+    fi
     cp "${copy}" "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to create /etc/el_configurator/${name}.profile" "ERROR"
     chmod 600 "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to chmod /etc/el_configurator/${name}.profile" "ERROR"
     text="$(cat -- "${copy}")"

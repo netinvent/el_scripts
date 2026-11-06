@@ -4388,7 +4388,14 @@ if is_enabled "${CONFIGURE_FIREWALL}"; then
         # will not work in the postinstall environment, so the config is written offline here
         configure_firewalld
         systemctl enable firewalld 2>> "${LOG_FILE}" || log "Failed to enable firewalld" "ERROR"
-        systemctl start firewalld || log "Cannot start firewalld. This happens in kickstart environment, but not in production"
+        # The config written offline only takes effect when firewalld reads it: a firewalld that is
+        # already running, as on a rerun on an installed system, keeps its old rules until it reloads
+        if firewall-cmd --state > /dev/null 2>&1; then
+            log "Reloading firewalld to apply the new rules"
+            firewall-cmd --reload >> "${LOG_FILE}" 2>&1 || log "Failed to reload firewalld, it keeps its previous rules" "ERROR"
+        else
+            systemctl start firewalld || log "Cannot start firewalld. This happens in kickstart environment, but not in production"
+        fi
     elif [ "${FLAVOR}" = "debian" ]; then
         apt-get install -y ufw 2>> "${LOG_FILE}" || log "Failed to install ufw" "ERROR"
         configure_ufw

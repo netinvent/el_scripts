@@ -394,6 +394,87 @@ FW_REJECT_ITEM=""
 FIREWALL_OPEN_PORTS=""
 
 echo
+echo "== applying the configuration =="
+
+# firewall-offline-cmd only writes the configuration, so a firewalld that is already running, as on a
+# rerun on an installed system, keeps its old rules unless it reloads. One that is not running, as
+# in the kickstart %post chroot, is started instead. This runs the script's own firewall block, from
+# its "if is_enabled" line to the matching "fi", with configure_firewalld and the commands stubbed
+# shellcheck disable=SC2016
+fw_block_start=$(grep -nxF 'if is_enabled "${CONFIGURE_FIREWALL}"; then' "${SCRIPT}" | head -n 1 | cut -d: -f1)
+if [ -z "${fw_block_start}" ]; then
+    echo "Cannot locate the CONFIGURE_FIREWALL block in [${SCRIPT}]"
+    exit 2
+fi
+fw_block_end=$(awk -v s="${fw_block_start}" 'NR>s && /^fi$/ {print NR; exit}' "${SCRIPT}")
+FW_BLOCK="${WORK}/fw_block"
+APPLY_CALLS="${WORK}/apply_calls"
+sed -n "${fw_block_start},${fw_block_end}p" "${SCRIPT}" > "${FW_BLOCK}"
+
+# FW_STATE_RC is what firewall-cmd --state returns: 0 when firewalld runs, 252 (NOT_RUNNING) when not.
+# Runs in a subshell, so that the stubs do not outlive it
+run_fw_block() {
+    : > "${APPLY_CALLS}"
+    : > "${ERRORS_TEXT}"
+    # The stubs are called from the sourced block, which the linter cannot see
+    # shellcheck disable=SC2329
+    (
+        CONFIGURE_FIREWALL=true
+        FLAVOR=rhel
+        dnf() { return 0; }
+        configure_firewalld() { echo "configure_firewalld" >> "${APPLY_CALLS}"; }
+        systemctl() { echo "systemctl $*" >> "${APPLY_CALLS}"; return 0; }
+        firewall-cmd() {
+            echo "firewall-cmd $*" >> "${APPLY_CALLS}"
+            case "${1}" in
+                --state)  return "${FW_STATE_RC}" ;;
+                --reload) return "${FW_RELOAD_RC}" ;;
+            esac
+            return 0
+        }
+        # shellcheck disable=SC1090
+        source "${FW_BLOCK}"
+    ) > /dev/null 2>&1
+}
+
+# Line number of the first call matching $1 in APPLY_CALLS, empty when there is none
+call_line() { grep -nxF -- "${1}" "${APPLY_CALLS}" | head -n 1 | cut -d: -f1; }
+
+FW_STATE_RC=0
+FW_RELOAD_RC=0
+run_fw_block
+config_line=$(call_line "configure_firewalld")
+reload_line=$(call_line "firewall-cmd --reload")
+if [ -n "${config_line}" ] && [ -n "${reload_line}" ] && [ "${config_line}" -lt "${reload_line}" ] && [ ! -s "${ERRORS_TEXT}" ]; then
+    pass "a running firewalld reloads after the configuration is written"
+else
+    fail "a running firewalld reloads after the configuration is written" "$(cat "${APPLY_CALLS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+if [ -z "$(call_line "systemctl start firewalld")" ] && [ -n "$(call_line "systemctl enable firewalld")" ]; then
+    pass "a running firewalld is enabled, and not started again"
+else
+    fail "a running firewalld is enabled, and not started again" "$(cat "${APPLY_CALLS}")"
+fi
+
+FW_RELOAD_RC=1
+run_fw_block
+if grep -q 'Failed to reload firewalld' "${ERRORS_TEXT}"; then
+    pass "a failed reload is an ERROR"
+else
+    fail "a failed reload is an ERROR" "$(cat "${APPLY_CALLS}")"
+fi
+FW_RELOAD_RC=0
+
+FW_STATE_RC=252
+run_fw_block
+if [ -n "$(call_line "systemctl start firewalld")" ] && [ -z "$(call_line "firewall-cmd --reload")" ] && [ -n "$(call_line "configure_firewalld")" ]; then
+    pass "a firewalld that is not running, as in the kickstart, is started instead of reloaded"
+else
+    fail "a firewalld that is not running, as in the kickstart, is started instead of reloaded" "$(cat "${APPLY_CALLS}")"
+fi
+FW_STATE_RC=0
+
+echo
 echo "== el_configurator.sh wiring =="
 
 if grep -qE '^[[:space:]]*configure_firewalld$' "${SCRIPT}"; then

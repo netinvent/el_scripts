@@ -625,8 +625,10 @@ load_profile() {
         log_quit "Profile file ${path}: holds NUL bytes, it is not a text file"
     fi
     log "Loading profile ${name} from ${path} (sha256 $(sha256sum < "${copy}" | cut -c 1-16)...)"
-    [ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}" || log "Failed to create /etc/el_configurator" "ERROR"
-    [ ! -f "/etc/el_configurator/${name}.profile" ] && rm -f "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to remove existing /etc/el_configurator/${name}.profile" "ERROR"
+    [ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}"
+    [ $? -ne 0 ] && log "Failed to create /etc/el_configurator" "ERROR"
+    [ ! -f "/etc/el_configurator/${name}.profile" ] && rm -f "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}"
+    [ $? -ne 0 ] && log "Failed to remove existing /etc/el_configurator/${name}.profile" "ERROR"
     cp "${copy}" "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to create /etc/el_configurator/${name}.profile" "ERROR"
     chmod 600 "/etc/el_configurator/${name}.profile" 2>> "${LOG_FILE}" || log "Failed to chmod /etc/el_configurator/${name}.profile" "ERROR"
     text="$(cat -- "${copy}")"
@@ -5747,7 +5749,8 @@ else
 fi
 echo "${REMOTE_LOGIN_BANNER}" > /etc/motd 2>> "${LOG_FILE}" || log "Failed to create /etc/motd" "ERROR"
 echo "${MOTD_MSG}" >> /etc/motd 2>> "${LOG_FILE}" || log "Failed to add cow to /etc/motd" "ERROR"
-[ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}" || log "Failed to create /etc/el_configurator" "ERROR"
+[ ! -d "/etc/el_configurator" ] && mkdir -p "/etc/el_configurator" 2>> "${LOG_FILE}"
+[ $? -ne 0 ] && log "Failed to create /etc/el_configurator" "ERROR"
 echo "${ELCONF_STATUS}" > /etc/el_configurator/state 2>> "${LOG_FILE}" || log "Failed to write status to /etc/el_configurator/state" "ERROR"
 
 # Cleanup. The kickstart file itself is already handled by inst.nosave=all_ks, this is belt and

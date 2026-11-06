@@ -9,7 +9,7 @@
 SCRIPT_BUILD="2026102001"
 
 # Note that all variables can be overridden by kernel arguments
-# Example: Override BRAND_NAME with kernel argument: NPF_BRAND_NAME=MyBrand
+# Example: Override BRAND_NAME variable with kernel argument: ELCONF_BRAND_NAME=MyBrand
 #
 # The settings below can be overridden by a profile file, so that one file can be shipped with this
 # script instead of an edited copy of it:
@@ -309,12 +309,12 @@ log "Starting EL configurator post install build ${SCRIPT_BUILD} at $(date)"
 
 get_kernel_arguments() {
     # This allows to set variables from kernel arguments
-    # kernel argument NPF_VARIABLE_NAME=value sets VARIABLE_NAME with value
-    # A value containing spaces must be quoted, eg NPF_BRAND_NAME="My Brand"
-    # A value may contain '=' signs, eg NPF_SOME_TOKEN=abc=def
+    # kernel argument ELCONF_VARIABLE_NAME=value sets VARIABLE_NAME with value
+    # A value containing spaces must be quoted, eg ELCONF_BRAND_NAME="My Brand"
+    # A value may contain '=' signs, eg ELCONF_SOME_TOKEN=abc=def
 
     local cmdline_file="${1:-/proc/cmdline}"
-    local kernel_arg_prefix="NPF_"
+    local kernel_arg_prefix="ELCONF_"
     local kernel_args remaining matched argument_name argument_value attributes
     # <prefix>NAME=VALUE where VALUE is either "quoted, possibly containing spaces" or a bare token.
     # The name is captured loosely here so that a malformed one can be reported rather than skipped.

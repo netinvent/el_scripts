@@ -64,8 +64,8 @@ NETWORK = "dhcp"
 
 # Please note that the following arguments can be superseded by kernel arguments
 # TARGET, USER_NAME, USER_PASSWORD, ROOT_PASSWORD, HOSTNAME, NETWORK, DISK_PATH (the disk we're installing the OS to, eg something like /dev/sda or /dev/vda or /dev/nvme0)
-# You need to specify that kernel argument as NPF_{ARGUMENT_NAME}=value, example
-# append initrd=initrd.img inst.ks=hd:LABEL=MYDISK:/ks.rhel9.cfg NPF_USER_NAME=bob
+# You need to specify that kernel argument as ELCONF_{ARGUMENT_NAME}=value, example
+# append initrd=initrd.img inst.ks=hd:LABEL=MYDISK:/ks.rhel9.cfg ELCONF_USER_NAME=bob
 
 ## Package management
 # Add lm-sensros and smartmontools on physical machines
@@ -185,7 +185,7 @@ def get_kernel_arguments() -> dict:
     kernel_arguments = {}
 
     for argument in argument_list:
-        argument_name = f"NPF_{argument}"
+        argument_name = f"ELCONF_{argument}"
         argument_value = _get_kernel_argument(argument_name)
         if argument_value:
             kernel_arguments[argument] = argument_value

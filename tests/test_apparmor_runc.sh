@@ -29,6 +29,16 @@ WORK=$(mktemp -d)
 trap 'rm -f "${HELPERS}"; rm -rf "${WORK}"' EXIT
 sed -n "${start},${end}p" "${SCRIPT}" > "${HELPERS}"
 
+# The function creates the disable directory through mkdir_if_not_exists, so that helper has to
+# come along too
+mk_start=$(grep -n '^mkdir_if_not_exists() {' "${SCRIPT}" | head -n 1 | cut -d: -f1)
+if [ -z "${mk_start}" ]; then
+    echo "Cannot locate mkdir_if_not_exists() in [${SCRIPT}]"
+    exit 2
+fi
+mk_end=$(awk -v s="${mk_start}" 'NR>=s && /^\}$/ {print NR; exit}' "${SCRIPT}")
+sed -n "${mk_start},${mk_end}p" "${SCRIPT}" >> "${HELPERS}"
+
 # Read by the extracted function, which the linter cannot see, hence the SC2034 waivers
 # shellcheck disable=SC2034
 LOG_FILE=/dev/null

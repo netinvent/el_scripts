@@ -299,6 +299,42 @@ UFW_REJECT=""
 FIREWALL_OPEN_PORTS=""
 
 echo
+echo "== the default zone's target, once ufw is enabled =="
+
+# configure_ufw_default_policy has tests of its own, in test_ufw_default_policy.sh. Here it only
+# records when configure_ufw calls it
+# shellcheck disable=SC2329
+configure_ufw_default_policy() { printf '%s\n' "configure_ufw_default_policy" >> "${CALLS}"; return 0; }
+
+FIREWALL_DEFAULT_ZONE_TARGET=""
+run_case
+if ! grep -q 'configure_ufw_default_policy' "${CALLS}"; then
+    pass "left empty, the target is not applied"
+else
+    fail "left empty, the target is not applied" "$(cat "${CALLS}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_TARGET=DROP
+run_case
+enable_at=$(first_call 'ufw enable')
+target_at=$(first_call 'configure_ufw_default_policy')
+if [ -n "${enable_at}" ] && [ -n "${target_at}" ] && [ "${enable_at}" -lt "${target_at}" ]; then
+    pass "DROP is applied after ufw is enabled"
+else
+    fail "DROP is applied after ufw is enabled" "$(cat "${CALLS}")"
+fi
+
+UFW_REJECT="allow"
+run_case
+if ! grep -q 'configure_ufw_default_policy' "${CALLS}"; then
+    pass "a ufw left off because nothing could be allowed gets no target either"
+else
+    fail "a ufw left off because nothing could be allowed gets no target either" "$(cat "${CALLS}")"
+fi
+UFW_REJECT=""
+FIREWALL_DEFAULT_ZONE_TARGET=""
+
+echo
 echo "== el_configurator.sh calls it, and nothing enables ufw behind its back =="
 
 if grep -qE '^[[:space:]]*configure_ufw$' "${SCRIPT}"; then

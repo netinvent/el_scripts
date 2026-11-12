@@ -76,10 +76,14 @@ FW_REJECT=""
 #
 # Ports, services, rich rules and interfaces are kept in ITEMS as zone|kind|value, the default zone
 # being public, and zones made with --new-zone in ZONES. An add into a zone that does not exist fails,
-# as does one whose value contains FW_REJECT_ITEM.
+# as does an add or a remove whose value contains FW_REJECT_ITEM. Removing what is not there fails.
+# The default zone's target is kept in TARGET, default when empty; FW_REJECT_TARGET makes setting it
+# fail.
 ITEMS="${WORK}/items"
 ZONES="${WORK}/zones"
+TARGET="${WORK}/target"
 FW_REJECT_ITEM=""
+FW_REJECT_TARGET=""
 # shellcheck disable=SC2329
 firewall-offline-cmd() {
     local arg zone="" op="" val="" kind=""
@@ -96,9 +100,30 @@ firewall-offline-cmd() {
                 op=add_item; kind="${arg%%=*}"; kind="${kind#--add-}"; kind="${kind#--change-}"; val="${arg#*=}" ;;
             --query-port=*|--query-service=*|--query-rich-rule=*|--query-interface=*)
                 op=query_item; kind="${arg%%=*}"; kind="${kind#--query-}"; val="${arg#*=}" ;;
+            --remove-rich-rule=*)
+                op=remove_item; kind=rich-rule; val="${arg#*=}" ;;
+            --set-target=*)    op=set_target; val="${arg#--set-target=}" ;;
+            --get-target)      op=get_target ;;
         esac
     done
     case "${op}" in
+        set_target)
+            [ -n "${FW_REJECT_TARGET}" ] && return 1
+            printf '%s\n' "${val}" > "${TARGET}"
+            return 0
+            ;;
+        get_target)
+            if [ -s "${TARGET}" ]; then cat "${TARGET}"; else echo default; fi
+            return 0
+            ;;
+        remove_item)
+            grep -qxF "${zone:-public}|${kind}|${val}" "${ITEMS}" 2>/dev/null || return 1     # NOT_ENABLED
+            if [ -n "${FW_REJECT_ITEM}" ] && [[ "${val}" == *"${FW_REJECT_ITEM}"* ]]; then
+                return 1
+            fi
+            grep -vxF "${zone:-public}|${kind}|${val}" "${ITEMS}" > "${ITEMS}.new"; mv "${ITEMS}.new" "${ITEMS}"
+            return 0
+            ;;
         get_zones)
             printf 'block dmz drop external home internal public trusted work'
             [ -s "${ZONES}" ] && printf ' %s' "$(tr '\n' ' ' < "${ZONES}")"
@@ -166,6 +191,7 @@ run_case() {
         : > "${BOUND}"
         : > "${ITEMS}"
         : > "${ZONES}"
+        : > "${TARGET}"
     fi
     LOGGED_ERRORS=0
     configure_firewalld > /dev/null 2>&1
@@ -392,6 +418,188 @@ else
 fi
 FW_REJECT_ITEM=""
 FIREWALL_OPEN_PORTS=""
+
+echo
+echo "== the default zone's target =="
+
+ND_RULES=(
+    'public|rich-rule|rule family="ipv6" icmp-type name="neighbour-solicitation" accept'
+    'public|rich-rule|rule family="ipv6" icmp-type name="neighbour-advertisement" accept'
+    'public|rich-rule|rule family="ipv6" icmp-type name="router-advertisement" accept'
+    'public|rich-rule|rule family="ipv6" source address="fe80::/10" icmp-type name="mld-listener-query" accept'
+)
+PING_RULE='public|rich-rule|rule icmp-type name="echo-request" accept'
+has_nd_rules() { local r; for r in "${ND_RULES[@]}"; do has_item "${r}" || return 1; done; return 0; }
+has_no_icmp_rules() { ! grep -q 'icmp-type' "${ITEMS}"; }
+target_is() { [ "$(cat "${TARGET}" 2>/dev/null)" = "${1}" ]; }
+
+FIREWALL_DEFAULT_ZONE_TARGET=""
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=false
+run_case
+if ! grep -q -- '--set-target\|--get-target\|rich-rule' "${CALLS}"; then
+    pass "left empty, the target and the ICMP rules are not touched"
+else
+    fail "left empty, the target and the ICMP rules are not touched" "$(cat "${CALLS}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_TARGET=DROP
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && target_is DROP && has_nd_rules && ! has_item "${PING_RULE}"; then
+    pass "DROP: the target is set, IPv6 neighbour discovery stays allowed, ping does not"
+else
+    fail "DROP: the target is set, IPv6 neighbour discovery stays allowed, ping does not" "rc=${rc}" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=true
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && target_is DROP && has_nd_rules && has_item "${PING_RULE}"; then
+    pass "DROP with FIREWALL_DEFAULT_ZONE_ALLOW_PING on a rerun: ping is allowed as well"
+else
+    fail "DROP with FIREWALL_DEFAULT_ZONE_ALLOW_PING on a rerun: ping is allowed as well" "rc=${rc}" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=false
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && has_nd_rules && ! has_item "${PING_RULE}"; then
+    pass "turning FIREWALL_DEFAULT_ZONE_ALLOW_PING off again takes the ping rule away"
+else
+    fail "turning FIREWALL_DEFAULT_ZONE_ALLOW_PING off again takes the ping rule away" "rc=${rc}" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_TARGET=default
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=true
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && target_is default && has_no_icmp_rules; then
+    pass "default puts firewalld's own target back and takes every ICMP rule away, ping's included"
+else
+    fail "default puts firewalld's own target back and takes every ICMP rule away, ping's included" "rc=${rc}" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_TARGET=REJECT
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=false
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && target_is '%%REJECT%%' && has_nd_rules && ! has_item "${PING_RULE}"; then
+    pass "REJECT: set under the name firewalld stores, %%REJECT%%, with the ICMPv6 rules DROP gets, and no ping"
+else
+    fail "REJECT: set under the name firewalld stores, %%REJECT%%, with the ICMPv6 rules DROP gets, and no ping" "rc=${rc}" "$(cat "${TARGET}")" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+
+FIREWALL_DEFAULT_ZONE_TARGET=DROP
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=true
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 0 ] && [ ! -s "${ERRORS_TEXT}" ] && target_is DROP && has_nd_rules && has_item "${PING_RULE}"; then
+    pass "from REJECT to DROP with ping allowed on a rerun"
+else
+    fail "from REJECT to DROP with ping allowed on a rerun" "rc=${rc}" "$(cat "${TARGET}")" "$(cat "${ITEMS}")" "$(cat "${ERRORS_TEXT}")"
+fi
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=false
+
+FIREWALL_DEFAULT_ZONE_TARGET=DROP
+FW_REJECT_TARGET=yes
+run_case
+rc=$?
+if [ "${rc}" -eq 1 ] && grep -q 'target DROP not set' "${ERRORS_TEXT}"; then
+    pass "a target that did not take: returns 1 and the ERROR says so"
+else
+    fail "a target that did not take: returns 1 and the ERROR says so" "rc=${rc}" "$(cat "${ERRORS_TEXT}")"
+fi
+FW_REJECT_TARGET=""
+
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=true
+run_case
+FIREWALL_DEFAULT_ZONE_ALLOW_PING=false
+FW_REJECT_ITEM="echo-request"
+run_case keepstate
+rc=$?
+if [ "${rc}" -eq 1 ] && grep -q 'left over rule icmp-type name="echo-request" accept' "${ERRORS_TEXT}"; then
+    pass "a ping rule that would not go: returns 1 and the ERROR names it"
+else
+    fail "a ping rule that would not go: returns 1 and the ERROR names it" "rc=${rc}" "$(cat "${ERRORS_TEXT}")"
+fi
+FW_REJECT_ITEM=""
+
+FIREWALL_WHITELIST_IP_LIST="192.0.2.0/24"
+FIREWALL_ALLOW_ALL_PORTS_ON_WHITELISTS=false
+run_case
+rc=$?
+if [ "${rc}" -eq 0 ] && target_is DROP && grep -qxF 'dmz 192.0.2.0/24' "${BOUND}" && ssh_removed; then
+    pass "DROP together with a whitelist: the narrowing happens as before"
+else
+    fail "DROP together with a whitelist: the narrowing happens as before" "rc=${rc}" "$(cat "${CALLS}")"
+fi
+FIREWALL_WHITELIST_IP_LIST=""
+FIREWALL_DEFAULT_ZONE_TARGET=""
+
+echo
+echo "== the default zone's target, against the real firewall-offline-cmd =="
+
+# The stand-in above cannot tell whether firewalld takes these target names and rich rules, nor
+# whether a rule queries back in the form it was added. In a mount namespace of an unprivileged user
+# namespace, a scratch /etc/firewalld lets the real offline client run without touching this
+# machine's configuration. Machines without firewalld, and kernels or runners that forbid this, skip
+# the section
+if command -v firewall-offline-cmd > /dev/null 2>&1 && [ -d /etc/firewalld ] && command -v unshare > /dev/null 2>&1 \
+        && unshare -rm sh -c 'mount -t tmpfs none /etc/firewalld' > /dev/null 2>&1; then
+    real=$(unshare -rm bash -s "${HELPERS}" << 'NS' 2>&1
+mount -t tmpfs none /etc/firewalld || exit 1
+LOG_FILE=/dev/null
+log() { [ "${2}" = "ERROR" ] && echo "ERROR: ${1}"; return 0; }
+# shellcheck disable=SC1090
+source "${1}"
+step() {
+    FIREWALL_DEFAULT_ZONE_TARGET="${1}"
+    FIREWALL_DEFAULT_ZONE_ALLOW_PING="${2}"
+    configure_firewalld_default_zone_target
+    echo "== ${1} ping=${2} rc=$? target=$(firewall-offline-cmd --get-target 2> /dev/null)"
+    firewall-offline-cmd --list-rich-rules 2> /dev/null | sort
+}
+step DROP false
+step REJECT true
+step DROP false
+step default false
+NS
+)
+    # The rules of a step, as firewalld lists them
+    rules_of() { printf '%s\n' "${real}" | sed -n "/^== ${1}\$/,/^==/p" | grep '^rule '; }
+    expected_nd=$(printf '%s\n' \
+        'rule family="ipv6" icmp-type name="neighbour-advertisement" accept' \
+        'rule family="ipv6" icmp-type name="neighbour-solicitation" accept' \
+        'rule family="ipv6" icmp-type name="router-advertisement" accept' \
+        'rule family="ipv6" source address="fe80::/10" icmp-type name="mld-listener-query" accept' | sort)
+    if printf '%s\n' "${real}" | grep -qxF '== DROP ping=false rc=0 target=DROP' \
+            && [ "$(rules_of 'DROP ping=false rc=0 target=DROP' | head -n 4)" = "${expected_nd}" ] \
+            && ! printf '%s\n' "${real}" | grep -q '^ERROR'; then
+        pass "DROP: firewalld takes the target, and lists the ICMPv6 rules exactly as the script queries them"
+    else
+        fail "DROP: firewalld takes the target, and lists the ICMPv6 rules exactly as the script queries them" "${real}"
+    fi
+    if printf '%s\n' "${real}" | grep -qxF '== REJECT ping=true rc=0 target=%%REJECT%%' \
+            && printf '%s\n' "${real}" | sed -n '/^== REJECT/,/^== DROP/p' | grep -qxF 'rule icmp-type name="echo-request" accept'; then
+        pass "REJECT with ping allowed: firewalld takes %%REJECT%%, and the ping rule"
+    else
+        fail "REJECT with ping allowed: firewalld takes %%REJECT%%, and the ping rule" "${real}"
+    fi
+    if [ "$(printf '%s\n' "${real}" | grep -c '^== DROP ping=false rc=0 target=DROP$')" -eq 2 ] \
+            && ! printf '%s\n' "${real}" | sed -n '/^== REJECT/,$p' | sed -n '/^== DROP/,/^== default/p' | grep -q 'echo-request'; then
+        pass "back to DROP without ping: firewalld lets the ping rule go"
+    else
+        fail "back to DROP without ping: firewalld lets the ping rule go" "${real}"
+    fi
+    if printf '%s\n' "${real}" | grep -qxF '== default ping=false rc=0 target=default' \
+            && ! printf '%s\n' "${real}" | sed -n '/^== default/,$p' | grep -q '^rule '; then
+        pass "default: firewalld's own target is back, with no rule left"
+    else
+        fail "default: firewalld's own target is back, with no rule left" "${real}"
+    fi
+else
+    echo "  skip no firewall-offline-cmd, or no unprivileged mount namespace, on this machine"
+fi
 
 echo
 echo "== applying the configuration =="

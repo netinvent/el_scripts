@@ -45,9 +45,11 @@ extract_function() {
 
 sed -n '/^PROFILE_SETTINGS=(/,/^)$/p' "${SCRIPT}" >> "${HELPERS}"
 for fn in check_profile_file_trust parse_profile_value set_profile_setting parse_profile_text load_profile \
-        validate_value_options sshd_check_keyword; do
+        validate_value_options sshd_check_keyword mkdir_if_not_exists; do
     extract_function "${fn}"
 done
+# load_profile keeps a copy of the profile in /etc/el_configurator, which these tests must not touch
+sed -i "s#/etc/el_configurator#${WORK}/etc/el_configurator#g" "${HELPERS}"
 
 LOG_FILE=/dev/null
 LOG_TEXT="${WORK}/log"
@@ -324,6 +326,11 @@ SCAP_PROFILE=[anssi_bp28_high]" ] && grep -q "Loading profile given from ${TRUST
 else
     fail "--profile-file overrides what it sets, the script's settings apply to the rest" "rc=${rc} got=${got}" "$(cat "${LOG_TEXT}")"
 fi
+if cmp -s "${TRUSTED_WORK}/given.profile" "${WORK}/etc/el_configurator/given.profile" && ! grep -q '^ERROR' "${LOG_TEXT}"; then
+    pass "a copy of the profile is kept in /etc/el_configurator, without an ERROR"
+else
+    fail "a copy of the profile is kept in /etc/el_configurator, without an ERROR" "$(ls -la "${WORK}/etc/el_configurator" 2>&1)" "$(grep '^ERROR' "${LOG_TEXT}")"
+fi
 
 FAKE_ROOT=false
 got=$(load "${TRUSTED_WORK}/given.profile")
@@ -424,6 +431,13 @@ values "an interface name with a space" 1 "FIREWALL_SSH_INTERFACE=wg 0"
 values "an interface name longer than the kernel allows" 1 FIREWALL_SSH_INTERFACE=abcdefghijklmnop
 values "a port without a protocol" 1 FIREWALL_OPEN_PORTS=51820
 values "a port with an unknown protocol" 1 FIREWALL_OPEN_PORTS=51820/icmp
+values "a DROP target" 0 FIREWALL_DEFAULT_ZONE_TARGET=DROP
+values "a REJECT target" 0 FIREWALL_DEFAULT_ZONE_TARGET=REJECT
+values "an empty target, which leaves the firewall as it is" 0 FIREWALL_DEFAULT_ZONE_TARGET=
+values "the default target, to undo DROP" 0 FIREWALL_DEFAULT_ZONE_TARGET=default
+values "firewalld's own name for REJECT, which firewall-cmd hides" 1 FIREWALL_DEFAULT_ZONE_TARGET=%%REJECT%%
+values "a lowercase drop target, which firewalld would refuse" 1 FIREWALL_DEFAULT_ZONE_TARGET=drop
+values "an ACCEPT target, which would open everything" 1 FIREWALL_DEFAULT_ZONE_TARGET=ACCEPT
 values "a maxretry that is not a number" 1 FAIL2BAN_MAXRETRY=three
 values "a findtime of -1" 1 FAIL2BAN_FINDTIME=-1
 values "an empty bantime" 1 FAIL2BAN_BANTIME=

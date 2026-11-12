@@ -36,6 +36,9 @@ extract_function() {
 
 pinned_lines=$(extract_function install_ssg_debian_packages)
 content_lines=$(extract_function install_ssg_content)
+# Creates /opt/ssg for install_ssg_debian_packages. Not in a command substitution, so that a missing
+# helper stops the test here
+extract_function mkdir_if_not_exists > /dev/null
 
 # Stubs for what the extracted helper expects from the surrounding script.
 # These are read by the extracted code, which the linter cannot see, hence the SC2034 waivers

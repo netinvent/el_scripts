@@ -68,6 +68,8 @@ extract_fn() {
 {
     extract_fn setup_node_exporter_user
     extract_fn prepare_node_exporter_textfile_dir
+    # Creates the directory for prepare_node_exporter_textfile_dir
+    extract_fn mkdir_if_not_exists
 } | sed "s#/var/lib/node_exporter#${WORK}/var/lib/node_exporter#g" > "${HELPERS}"
 
 # Stubs that record their arguments. chown is stubbed because the tests do not run as root and

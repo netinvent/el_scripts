@@ -11,13 +11,34 @@ jobs:
         # The runner starts steps with SIGPIPE ignored. A printf piped into a grep -q that stops at
         # an early match then gets EPIPE and prints "write error: Broken pipe" instead of dying
         # quietly as it does in a terminal. Each test gets the default SIGPIPE back.
+        # A passing test is folded into a group titled with its result line. A failing one is printed
+        # unfolded, and gets an annotation listing its failed checks on the run's summary page.
         run: |
           status=0
+          failed=""
           for test in tests/test_*.sh; do
-            echo "::group::${test}"
-            env --default-signal=PIPE bash "${test}" || status=1
-            echo "::endgroup::"
+            rc=0
+            out=$(env --default-signal=PIPE bash "${test}" 2>&1) || rc=$?
+            if [ "${rc}" -eq 0 ]; then
+              echo "::group::ok    ${test}: $(printf '%s\n' "${out}" | tail -n 1)"
+              printf '%s\n' "${out}"
+              echo "::endgroup::"
+              continue
+            fi
+            status=1
+            failed="${failed} ${test}"
+            echo "FAIL  ${test}, exit ${rc}"
+            printf '%s\n' "${out}"
+            checks=$(printf '%s\n' "${out}" | sed -n 's/^ *FAIL //p')
+            [ -z "${checks}" ] && checks="exit ${rc} without a FAIL line, see the log"
+            checks=${checks//'%'/'%25'}
+            checks=${checks//$'\n'/'%0A'}
+            echo "::error file=${test},title=${test} failed::${checks}"
           done
+          if [ -n "${failed}" ]; then
+            echo
+            echo "Failed:${failed}"
+          fi
           exit "${status}"
 
   kickstart-up-to-date:
